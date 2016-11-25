@@ -2,7 +2,7 @@ language: c
 compiler:
   - gcc
   - clang
-script: make -C projects/linux
+script: make -C projects/linux && make -C projects/linux/hosts
 notifications:
   email:
     recipients:
