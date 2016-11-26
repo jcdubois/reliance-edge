@@ -1,4 +1,4 @@
-CC=gcc
+CC ?= gcc
 P_OS ?= linux
 B_OBJEXT ?= to
 
@@ -10,10 +10,7 @@ INCLUDES=					\
 
 EXTRA_CFLAGS +=-Wall
 EXTRA_CFLAGS +=-Werror
-EXTRA_CFLAGS +=-Wno-switch-break
-EXTRA_CFLAGS +=-Wno-pointer-to-int-cast
 EXTRA_CFLAGS +=$(call cc-option,-Wframe-larger-than=4096)
-EXTRA_CFLAGS +=$(call cc-option,-Wno-error=unused-variable)
 
 ifneq ($(B_DEBUG),0)
 EXTRA_CFLAGS += -g -DDEBUG
