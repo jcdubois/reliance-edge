@@ -9,7 +9,7 @@ langauage: c
 compiler:
   - gcc
 
-script: make -C projects/linux && make -C projects/linux/host
+script: make -C projects/linux
 
 before_install:
       - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
@@ -21,5 +21,5 @@ addons:
       description: "Build submitted via Travis CI"
     notification_email: jcd@tribudubois.net
     build_command_prepend: "echo no configure"
-    build_command:   "make -C projects/linux; make -C projects/linux/host"
+    build_command:   "make -C projects/linux"
     branch_pattern: coverity_scan
