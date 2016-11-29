@@ -30,10 +30,13 @@ ifneq ($(B_DEBUG),0)
 EXTRA_CFLAGS +=-g -DDEBUG
 endif
 
-all:    fsstress tools
+all:    fsstress tools fusefs
 
 tools:
 	make -C $(P_PROJDIR)/host
+
+fusefs:
+	make -C $(P_PROJDIR)/fuse
 
 .c.o:
 	$(CC) $(EXTRA_CFLAGS) $(INCLUDES) -DD_DEBUG=$(B_DEBUG) -x c -c $< -o $@
@@ -56,4 +59,5 @@ clean:
 	-rm -f $(P_PROJDIR)/*.$(B_OBJEXT)
 	-rm -f fsstress
 	make -C $(P_PROJDIR)/host clean
+	make -C $(P_PROJDIR)/fuse clean
 
