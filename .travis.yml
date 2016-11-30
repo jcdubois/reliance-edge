@@ -8,6 +8,7 @@ langauage: c
 
 compiler:
   - gcc
+  - clang
 
 script: make -C projects/linux clean all
 
