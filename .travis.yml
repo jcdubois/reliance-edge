@@ -1,11 +1,13 @@
 language: c
+
 compiler:
-  - gcc
-  - clang
+	- gcc
+
 script: make -C projects/linux && make -C projects/linux/host
+
 notifications:
-  email:
-    recipients:
-      - jcd@tribudubois.net
-    on_success: change
-    on_failure: always
+	email:
+		recipients:
+			- jcd@tribudubois.net
+	on_success: change
+	on_failure: always
