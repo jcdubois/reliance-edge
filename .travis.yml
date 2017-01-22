@@ -1,28 +1,27 @@
 env:
-  global:
-   # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
-   #   via the "travis encrypt" command using the project repo's public key
-   - secure: "AFZaoM3R6XERmVeqeJ3YyfFz+dQ5it6TuZDnG14cZ3LJpeZMQGKsfiu3lIOR6Pj/1r9DTzFJQrw4WxwzvVdNV8TvFP+vGHk4gU/tYR6nqjAcUPp0FpO2Xm+T4U/a1uSmph/RVlw5W9i6oL01jej0ZHkPa7gF3lJ9NWj56c68/a4ngEqg/LfKTcxwK1Oc3tiJpSjkHZ+EfQG8uIOtgFrdiX02Ps+BMD6ItZMsk8Y6JqsI/s+SQt2D1Z+p3mU3a64j7fjHCksVbtPo6GWp3hMUP04WJj8i1QvSKa/L2VB9m5lrongxMitCQkOqEfWPxkpFkUEGuEYZAC95INCDWy4mtRFr4GwfRqtc8Wlu+H1zAsanY47zaTwawRzY+0cl07YphI7448pYPYt+0uUbK1LB9eQVSws8FqgNxWhWaOj3uOHdTwICDi44Cd+uI4yqFoIP2S3Y70pqsJigjPjVAfOXaryTGiK5bR8bj6JWcykjqi3x37IslDoUd8+2E1WUs6VZ+keoW51EZDTKazs29whgre6gP7ZRSl6s/uzvXY/T/933dki1zCitHTlp+lG5h8TuS+ci7YIWV99UXPXIiKUK4Ra7A3H9kSqQ4CMyL5PzW3yi11JFPhSThtxutiF3WarT4i8RoNN/Rp3FBU05EPM1whcSJDTGlD+7KNnXxi0LqVk="
+	global:
+	# The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+	# via the "travis encrypt" command using the project repo's public key
+	- secure: "AFZaoM3R6XERmVeqeJ3YyfFz+dQ5it6TuZDnG14cZ3LJpeZMQGKsfiu3lIOR6Pj/1r9DTzFJQrw4WxwzvVdNV8TvFP+vGHk4gU/tYR6nqjAcUPp0FpO2Xm+T4U/a1uSmph/RVlw5W9i6oL01jej0ZHkPa7gF3lJ9NWj56c68/a4ngEqg/LfKTcxwK1Oc3tiJpSjkHZ+EfQG8uIOtgFrdiX02Ps+BMD6ItZMsk8Y6JqsI/s+SQt2D1Z+p3mU3a64j7fjHCksVbtPo6GWp3hMUP04WJj8i1QvSKa/L2VB9m5lrongxMitCQkOqEfWPxkpFkUEGuEYZAC95INCDWy4mtRFr4GwfRqtc8Wlu+H1zAsanY47zaTwawRzY+0cl07YphI7448pYPYt+0uUbK1LB9eQVSws8FqgNxWhWaOj3uOHdTwICDi44Cd+uI4yqFoIP2S3Y70pqsJigjPjVAfOXaryTGiK5bR8bj6JWcykjqi3x37IslDoUd8+2E1WUs6VZ+keoW51EZDTKazs29whgre6gP7ZRSl6s/uzvXY/T/933dki1zCitHTlp+lG5h8TuS+ci7YIWV99UXPXIiKUK4Ra7A3H9kSqQ4CMyL5PzW3yi11JFPhSThtxutiF3WarT4i8RoNN/Rp3FBU05EPM1whcSJDTGlD+7KNnXxi0LqVk="
 
 language: c
 
 compiler:
-  - gcc
-  - clang
+	- gcc
 
 script: make -C projects/linux clean all
 
 before_install:
-      - sudo apt-get -qq update
-      - sudo apt-get install -y libfuse-dev
-      - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+	- sudo apt-get -qq update
+	- sudo apt-get install -y libfuse-dev
+	- echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
 
 addons:
-  coverity_scan:
-    project:
-      name: "jcdubois/reliance-edge"
-      description: "Build submitted via Travis CI"
-    notification_email: jcd@tribudubois.net
-    build_command_prepend: "echo no configure"
-    build_command:   "make -C projects/linux clean all"
-    branch_pattern: coverity_scan
+	coverity_scan:
+		project:
+			name: "jcdubois/reliance-edge"
+			description: "Build submitted via Travis CI"
+		notification_email: jcd@tribudubois.net
+		build_command_prepend: "echo no configure"
+		build_command:   "make -C projects/linux clean all"
+		branch_pattern: coverity_scan
