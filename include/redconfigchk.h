@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -76,6 +76,19 @@
   #ifndef REDCONF_API_POSIX_READDIR
     #error "Configuration error: REDCONF_API_POSIX_READDIR must be defined."
   #endif
+  #ifndef REDCONF_API_POSIX_CWD
+    #error "Configuration error: REDCONF_API_POSIX_CWD must be defined."
+  #endif
+  #ifndef REDCONF_API_POSIX_FSTRIM
+    /*  Reliance Edge v2.3 and below did not have REDCONF_API_POSIX_FSTRIM.  You
+        can fix this error by downloading the latest version of the
+        Configuration Utility (assuming you are using the latest version of
+        Reliance Edge) from http://www.datalight.com/reliance-edge, loading your
+        redconf.c and redconf.h files, and saving them again, replacing the
+        original files.
+    */
+  #error "Configuration error: your redconf.h is not compatible. Update your redconf files with a compatible version of the configuration utility."
+#endif
   #ifndef REDCONF_NAME_MAX
     #error "Configuration error: REDCONF_NAME_MAX must be defined."
   #endif
@@ -172,7 +185,6 @@
   #error "Configuration error: REDCONF_CHECKER must be defined."
 #endif
 
-
 #if (REDCONF_READ_ONLY != 0) && (REDCONF_READ_ONLY != 1)
   #error "Configuration error: REDCONF_READ_ONLY must be either 0 or 1"
 #endif
@@ -225,12 +237,26 @@
     #error "Configuration error: REDCONF_API_POSIX_READDIR must be either 0 or 1."
   #endif
 
+  #if (REDCONF_API_POSIX_CWD != 0) && (REDCONF_API_POSIX_CWD != 1)
+    #error "Configuration error: REDCONF_API_POSIX_CWD must be either 0 or 1."
+  #endif
+
+  #if (REDCONF_API_POSIX_FSTRIM != 0) && (REDCONF_API_POSIX_FSTRIM != 1)
+    #error "Configuration error: REDCONF_API_POSIX_FSTRIM must be either 0 or 1."
+  #endif
+  #if (REDCONF_API_POSIX_FSTRIM == 1) && (RED_KIT == RED_KIT_GPL)
+    #error "REDCONF_API_POSIX_FSTRIM not supported in Reliance Edge under GPL. Contact sales@datalight.com to upgrade."
+  #endif
+
   #if (REDCONF_NAME_MAX < 1U) || (REDCONF_NAME_MAX > (REDCONF_BLOCK_SIZE - 4U))
     #error "Configuration error: invalid value of REDCONF_NAME_MAX"
   #endif
 
   #if (REDCONF_PATH_SEPARATOR < 1) || (REDCONF_PATH_SEPARATOR > 127)
     #error "Configuration error: invalid value of REDCONF_PATH_SEPARATOR"
+  #endif
+  #if (REDCONF_API_POSIX_CWD == 1) && (REDCONF_PATH_SEPARATOR == '.')
+    #error "Configuration error: REDCONF_PATH_SEPARATOR cannot be '.' when REDCONF_API_POSIX_CWD is 1."
   #endif
 
   #if (REDCONF_RENAME_ATOMIC != 0) && (REDCONF_RENAME_ATOMIC != 1)
@@ -324,6 +350,10 @@
   #error "Configuration error: REDCONF_DISCARDS must be either 0 or 1."
 #endif
 
+#if (REDCONF_DISCARDS == 1) && (RED_KIT == RED_KIT_GPL)
+  #error "REDCONF_DISCARDS not supported in Reliance Edge under GPL. Contact sales@datalight.com to upgrade."
+#endif
+
 /*  REDCONF_BUFFER_COUNT lower limit checked in buffer.c
 */
 #if REDCONF_BUFFER_COUNT > 255U
@@ -336,11 +366,6 @@
 
 #if (REDCONF_CHECKER != 0) && (REDCONF_CHECKER != 1)
   #error "Configuration error: REDCONF_CHECKER must be either 0 or 1."
-#endif
-
-
-#if (REDCONF_DISCARDS == 1) && (RED_KIT == RED_KIT_GPL)
-  #error "REDCONF_DISCARDS not supported in Reliance Edge under GPL. Contact sales@datalight.com to upgrade."
 #endif
 
 

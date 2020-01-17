@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -37,37 +37,53 @@ static void MetaRootEndianSwap(METAROOT *pMetaRoot);
 
 /** @brief Mount a file system volume.
 
+    @param ulFlags  A bitwise-OR'd mask of mount flags.
+
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
+    @retval -RED_EINVAL @p ulFlags includes invalid mount flags.
     @retval -RED_EIO    Volume not formatted, improperly formatted, or corrupt.
 */
-REDSTATUS RedVolMount(void)
+REDSTATUS RedVolMount(
+    uint32_t    ulFlags)
 {
-    REDSTATUS ret;
+    REDSTATUS   ret;
 
-  #if REDCONF_READ_ONLY == 0
-    ret = RedOsBDevOpen(gbRedVolNum, BDEV_O_RDWR);
-  #else
-    ret = RedOsBDevOpen(gbRedVolNum, BDEV_O_RDONLY);
-  #endif
-
-    if(ret == 0)
+    if(ulFlags != (ulFlags & RED_MOUNT_MASK))
     {
-        ret = RedVolMountMaster();
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        BDEVOPENMODE mode = BDEV_O_RDONLY;
+
+      #if REDCONF_READ_ONLY == 0
+        if((ulFlags & RED_MOUNT_READONLY) == 0U)
+        {
+            mode = BDEV_O_RDWR;
+        }
+      #endif
+
+        ret = RedOsBDevOpen(gbRedVolNum, mode);
 
         if(ret == 0)
         {
-            ret = RedVolMountMetaroot();
-        }
+            ret = RedVolMountMaster();
 
-        if(ret != 0)
-        {
-            /*  If we fail to mount, invalidate the buffers to prevent any
-                confusion that could be caused by stale or corrupt metadata.
-            */
-            (void)RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
-            (void)RedOsBDevClose(gbRedVolNum);
+            if(ret == 0)
+            {
+                ret = RedVolMountMetaroot(ulFlags);
+            }
+
+            if(ret != 0)
+            {
+                /*  If we fail to mount, invalidate the buffers to prevent any
+                    confusion that could be caused by stale or corrupt metadata.
+                */
+                (void)RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
+                (void)RedOsBDevClose(gbRedVolNum);
+            }
         }
     }
 
@@ -146,14 +162,17 @@ REDSTATUS RedVolMountMaster(void)
 
     This function also populates the volume contexts.
 
+    @param ulFlags  A bitwise-OR'd mask of mount flags.
+
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
     @retval -RED_EIO    Both metaroots are missing or corrupt.
 */
-REDSTATUS RedVolMountMetaroot(void)
+REDSTATUS RedVolMountMetaroot(
+    uint32_t    ulFlags)
 {
-    REDSTATUS ret;
+    REDSTATUS   ret;
 
     ret = RedIoRead(gbRedVolNum, BLOCK_NUM_FIRST_METAROOT, 1U, &gpRedCoreVol->aMR[0U]);
 
@@ -246,14 +265,14 @@ REDSTATUS RedVolMountMetaroot(void)
             giving the next node written to disk the same sequence number as the
             metaroot, increment it here.
         */
-        ret = RedVolSeqNumIncrement();
+        ret = RedVolSeqNumIncrement(gbRedVolNum);
     }
 
     if(ret == 0)
     {
         gpRedVolume->fMounted = true;
       #if REDCONF_READ_ONLY == 0
-        gpRedVolume->fReadOnly = false;
+        gpRedVolume->fReadOnly = (ulFlags & RED_MOUNT_READONLY) != 0U;
       #endif
 
       #if RESERVED_BLOCKS > 0U
@@ -369,7 +388,7 @@ REDSTATUS RedVolTransact(void)
             gpRedMR->hdr.ulSignature = META_SIG_METAROOT;
             gpRedMR->hdr.ullSequence = gpRedVolume->ullSequence;
 
-            ret = RedVolSeqNumIncrement();
+            ret = RedVolSeqNumIncrement(gbRedVolNum);
         }
 
         if(ret == 0)
@@ -508,17 +527,26 @@ void RedVolCriticalError(
 
 /** @brief Increment the sequence number.
 
+    @param bVolNum  Volume number of the volume whose sequence number is to be
+                    incremented.
+
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
     @retval -RED_EINVAL Cannot increment sequence number: maximum value reached.
                         This should not ever happen.
 */
-REDSTATUS RedVolSeqNumIncrement(void)
+REDSTATUS RedVolSeqNumIncrement(
+    uint8_t     bVolNum)
 {
-    REDSTATUS ret;
+    REDSTATUS   ret;
 
-    if(gpRedVolume->ullSequence == UINT64_MAX)
+    if(bVolNum >= REDCONF_VOLUME_COUNT)
+    {
+        REDERROR();
+        ret = -RED_EINVAL;
+    }
+    else if(gaRedVolume[bVolNum].ullSequence == UINT64_MAX)
     {
         /*  In practice this should never, ever happen; to get here, there would
             need to be UINT64_MAX disk writes, which would take eons: longer
@@ -531,7 +559,7 @@ REDSTATUS RedVolSeqNumIncrement(void)
     }
     else
     {
-        gpRedVolume->ullSequence++;
+        gaRedVolume[bVolNum].ullSequence++;
         ret = 0;
     }
 

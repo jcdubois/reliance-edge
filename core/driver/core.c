@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -79,7 +79,8 @@ CONST_IF_ONE_VOLUME uint8_t gbRedVolNum;
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0   Operation was successful.
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL Invalid configuration parameters.
 */
 REDSTATUS RedCoreInit(void)
 {
@@ -113,6 +114,7 @@ REDSTATUS RedCoreInit(void)
 
         if(    (pVolConf->ulSectorSize < SECTOR_SIZE_MIN)
             || ((REDCONF_BLOCK_SIZE % pVolConf->ulSectorSize) != 0U)
+            || ((UINT64_MAX - pVolConf->ullSectorOffset) < pVolConf->ullSectorCount) /* SectorOffset + SectorCount must not wrap */
             || (pVolConf->ulInodeCount == 0U))
         {
             ret = -RED_EINVAL;
@@ -381,14 +383,17 @@ REDSTATUS RedCoreVolFormat(void)
 
     If the volume is already mounted, the behavior is undefined.
 
+    @param ulFlags  A bitwise-OR'd mask of mount flags.
+
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
     @retval -RED_EIO    Volume not formatted, improperly formatted, or corrupt.
 */
-REDSTATUS RedCoreVolMount(void)
+REDSTATUS RedCoreVolMount(
+    uint32_t    ulFlags)
 {
-    return RedVolMount();
+    return RedVolMount(ulFlags);
 }
 
 
@@ -547,6 +552,7 @@ REDSTATUS RedCoreVolStat(
 
     The following events are available when using the POSIX-like API:
 
+    - #RED_TRANSACT_SYNC
     - #RED_TRANSACT_UMOUNT
     - #RED_TRANSACT_CREAT
     - #RED_TRANSACT_UNLINK
@@ -1014,6 +1020,8 @@ static REDSTATUS CoreLink(
                                 deletion.
     @retval -RED_ENOTEMPTY      The inode refered to by @p pszName is a
                                 directory which is not empty.
+    @retval -RED_EROFS          The requested unlink requires writing in a
+                                directory on a read-only file system.
 */
 REDSTATUS RedCoreUnlink(
     uint32_t    ulPInode,
@@ -1075,6 +1083,8 @@ REDSTATUS RedCoreUnlink(
                                 deletion.
     @retval -RED_ENOTEMPTY      The inode refered to by @p pszName is a
                                 directory which is not empty.
+    @retval -RED_EROFS          The requested unlink requires writing in a
+                                directory on a read-only file system.
 */
 static REDSTATUS CoreUnlink(
     uint32_t    ulPInode,
@@ -1262,8 +1272,8 @@ REDSTATUS RedCoreLookup(
                                 empty.
     @retval -RED_ENOSPC         The file system does not have enough space to
                                 extend the @p ulDstPInode directory.
-    @retval -RED_EROFS          The directory to be removed resides on a
-                                read-only file system.
+    @retval -RED_EROFS          The requested rename requires writing in a
+                                directory on a read-only file system.
 */
 REDSTATUS RedCoreRename(
     uint32_t    ulSrcPInode,
@@ -1339,8 +1349,8 @@ REDSTATUS RedCoreRename(
                                 empty.
     @retval -RED_ENOSPC         The file system does not have enough space to
                                 extend the @p ulDstPInode directory.
-    @retval -RED_EROFS          The directory to be removed resides on a
-                                read-only file system.
+    @retval -RED_EROFS          The requested rename requires writing in a
+                                directory on a read-only file system.
 */
 static REDSTATUS CoreRename(
     uint32_t    ulSrcPInode,
@@ -1852,7 +1862,7 @@ static REDSTATUS CoreFileTruncate(
 #endif /* TRUNCATE_SUPPORTED */
 
 
-#if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_READDIR == 1)
+#if (REDCONF_API_POSIX == 1) && ((REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1))
 /** @brief Read from a directory.
 
     If files are added to the directory after it is opened, the new files may
@@ -1917,5 +1927,55 @@ REDSTATUS RedCoreDirRead(
 
     return ret;
 }
-#endif /* (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_READDIR == 1) */
+#endif /* (REDCONF_API_POSIX == 1) && ((REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1)) */
+
+
+#if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_CWD == 1)
+/** @brief Retrieve the parent directory inode of a directory inode.
+
+    @param ulInode      The directory inode whose parent directory inode is to
+                        be retrieved.
+    @param pulPInode    On success, populated with the parent inode.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0               Operation was successful.
+    @retval -RED_EBADF      @p ulInode is not a valid inode number.
+    @retval -RED_EINVAL     The volume is not mounted; or @p pulPInode is NULL.
+    @retval -RED_EIO        A disk I/O error occurred.
+    @retval -RED_ENOTDIR    @p ulInode refers to a file.
+*/
+REDSTATUS RedCoreDirParent(
+    uint32_t    ulInode,
+    uint32_t   *pulPInode)
+{
+    REDSTATUS   ret;
+
+    if(!gpRedVolume->fMounted || (pulPInode == NULL))
+    {
+        ret = -RED_EINVAL;
+    }
+    else if(ulInode == INODE_ROOTDIR)
+    {
+        *pulPInode = INODE_INVALID;
+        ret = 0;
+    }
+    else
+    {
+        CINODE ino;
+
+        ino.ulInode = ulInode;
+        ret = RedInodeMount(&ino, FTYPE_DIR, false);
+        if(ret == 0)
+        {
+            *pulPInode = ino.pInodeBuf->ulPInode;
+            REDASSERT(INODE_IS_VALID(*pulPInode));
+
+            RedInodePut(&ino, 0U);
+        }
+    }
+
+    return ret;
+}
+#endif /* (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_CWD == 1) */
 

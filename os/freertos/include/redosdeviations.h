@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -37,7 +37,7 @@
 
 
 #if (REDCONF_ASSERTS == 1) && (REDCONF_OUTPUT == 1)
-/** Print a formatted message for an assertion.
+/** @brief Print a formatted message for an assertion.
 
     Usages of this macro deviate from MISRA C:2012 Rule 21.6 (required).  Using
     printf() is the most convenient way to output this information; and the risk
@@ -53,7 +53,7 @@
 #endif
 
 
-/** Cast a value to unsigned long.
+/** @brief Cast a value to unsigned long.
 
     Usages of this macro deviate from MISRA C:2012 Directive 4.6.  This macro is
     used in two places to cast a uint64_t value (used by the block device
@@ -71,7 +71,8 @@
 #define CAST_ULONG(ull) ((unsigned long)(ull))
 
 
-/** Cast a const-qualified pointer to a pointer which is *not* const-qualified.
+/** @brief Cast a const-qualified pointer to a pointer which is *not*
+           const-qualified.
 
     Usages of this macro deviate from MISRA C:2012 Rule 11.8.  This macro is
     used in exactly one place in order to cope with a poorly designed
@@ -90,7 +91,7 @@
 #define CAST_AWAY_CONST(type, ptr) ((type *)(ptr))
 
 
-/** Allocate zero-initialized (cleared) memory.
+/** @brief Allocate zero-initialized (cleared) memory.
 
     All usages of this macro deviate from MISRA C:2012 Directive 4.12 (required)
     and Rule 21.3 (required).  In the context of the single place it is actually
@@ -122,7 +123,7 @@
 
 
 #if REDCONF_OUTPUT == 1
-/** Output a character to a serial port or other display device.
+/** @brief Output a character to a serial port or other display device.
 
     Usages of this macro deviate from MISRA C:2012 Rule 21.6 (required).
     FreeRTOS does not include a standard method of printing characters, so
@@ -139,7 +140,7 @@
 
 
 #if (REDCONF_TASK_COUNT > 1U) && (REDCONF_API_POSIX == 1)
-/** Cast a TaskHandle_t (a pointer type) to uintptr_t.
+/** @brief Cast a TaskHandle_t (a pointer type) to uintptr_t.
 
     Usage of this macro deivate from MISRA-C:2012 Rule 11.4 (advisory).  This
     macro is used for the FreeRTOS version of RedOsTaskId().  Some RTOSes
@@ -157,7 +158,7 @@
 #endif
 
 
-/** Ignore the return value of a function (cast to void)
+/** @brief Ignore the return value of a function (cast to void)
 
     Usages of this macro deviate from MISRA C:2012 Directive 4.7, which states
     that error information must be checked immediately after a function returns

@@ -5,6 +5,173 @@ recent releases and a list of known issues.
 
 ## Release History and Changes
 
+### Reliance Edge v2.4, November 2019
+
+#### Common Code Changes
+
+- Fixed a bug which caused the maximum inode size to be miscalculated in some
+  configurations with larger block sizes (8 KB and up).
+- Add support for a sector size and block size of 128 bytes (the previous
+  minimum was 256 bytes).  This is primarily useful when small-capacity
+  nonvolatile RAM is used as the storage device.
+- red_sync() and red_close() have been fixed to work with read-only volumes.
+- Add red_mount2() to the POSIX-like API.  It is similar to red_mount() except
+  that mount flags can be specified.  Flags are provided for mounting read-only
+  and (in the commercial kit) to control whether discards are issued.
+- Add red_fstrim() to the POSIX-like API (commercial kit only).  The API is used
+  to discard free space, similar to the fstrim utility on Linux systems.
+- The `REDCONF_API_POSIX_FSTRIM` macro has been added to redconf.h to specify
+  whether red_fstrim() should be included.  Existing redconf.h files must be
+  updated by opening and saving them with the updated Configuration Utility.
+- RedOsBDevDiscard() (which only exists in the commercial kit) has been updated
+  to return a `REDSTATUS` value, instead of returning `void`.
+- MVStressTest, a new stress test that can exercise multiple file system
+  volumes, has been added to the commercial kit.
+
+### Reliance Edge v2.3, January 2019
+
+#### Common Code Changes
+
+- Add support for red_sync() to the POSIX-like API, including the new
+  `RED_TRANSACT_SYNC` automatic transaction flag and requisite configuration
+  option in the Reliance Edge Configuration Utility.
+- Add discard testing to BDevTest (available in the commercial kit).
+- Fix bugs affecting multivolume use cases caused by incorrect use of
+  "current volume" global variables.  These bugs could cause spurious I/O
+  errors and metadata corruption.
+- Fix a bug in checker (available in the commercial kit): an array indexing
+  error would cause the wrong link count to be printed when link count
+  corruption was detected.
+
+#### INTEGRITY Port Changes
+
+- Add support for the storage driver API introduced in INTEGRITY v11.7.
+- Add INTEGRITY v11.7.x-compatible example projects for the INTEGRITY ARM
+  Simulator and the Renesas R-Car H3 Starter Kit.
+- Instead of unconditionally transacting all volumes, the INTEGRITY sync()
+  system call now calls red_sync().  Transactions will only be performed on
+  volumes which set the `RED_TRANSACT_SYNC` automatic transaction flag.
+- Fixed a bug which resulted in errors when mounting more than one volume.
+- An `EINVAL` error is now returned by `mount()` if the Reliance Edge mount
+  point does not start with "//".  Because of how INTEGRITY parses paths, the
+  "//" has always been required; and while this was documented, it was not
+  enforced in the code, which could lead to subtle errors.
+
+### Reliance Edge v2.2.1, June 2018
+
+#### Common Code Changes
+
+- Fix bugs in the implementation of the sector offset feature added in Reliance
+  Edge v2.2.  Anyone who set the sector offset to a value other than zero is
+  strongly encouraged to upgrade.
+- Fix a minor bug in the POSIX-like API where operations which are not allowed
+  on the root directory -- such as deleting, renaming, or recreating it -- would
+  set `red_errno` to `RED_EINVAL` rather than the appropriate errno value.
+- Fix a bug in the POSIX-like API Test Suite which caused a link error if
+  relative paths were enabled but rename was disabled.
+- Fix minor documentation issues.
+- Fix a test bug which was causing the simulated power interruption test in
+  projects/powerint to fail.  This test is only provided with the commercial
+  kit.
+
+#### INTEGRITY Port Changes
+
+- Fix a bug in the block device code which would fail to report an error and
+  leave the sector size uninitialized, later causing a memory violation.
+- Update to support binary and text modes with fopen(), such as "w+b" or "rt".
+  Regardless of open mode, Reliance Edge, like the native file systems, does not
+  perform newline conversions.
+- Minor fixes and enhancements to the INTEGRITY port documentation.
+- Fix a path problem in the `host/Makefile` for the bbb-app-unified and
+  bbb-app-clientserv example projects.
+
+#### FreeRTOS Port Changes
+
+- Fix a bug in the F_DRIVER example implementation of the block device service.
+  According to the FreeRTOS documentation, the `release` function pointer in
+  the `F_DRIVER` structure is allowed to be `NULL`, but the old code was
+  calling that function unconditionally, without first ensuring it was
+  non-`NULL`.  The updated code will only call `release` when it is non-`NULL`.
+
+#### Linux Port Changes
+
+- Add support for discards on compatible block devices (commercial kit only).
+- Add locking to the FUSE port to fix multithreading issues.
+
+### Reliance Edge v2.2, December 2017
+
+#### Common Code Changes
+- The Reliance Edge Configuration Utility has been updated to support specifying
+  a sector offset for each volume.  This allows Reliance Edge to be used on
+  partitioned storage devices without osbdev.c customization.  To upgrade an old
+  redconf.c to be compatible with this change, the sector offset must be
+  manually added to the entry for each volume in redconf.c, for example:
+    - Before: `{ 512U, 65536U, false, 1024U, 0U, "VOL0:" }`
+    - After: `{ 512U, 65536U, 0U, false, 1024U, 0U, "VOL0:" }`
+
+#### INTEGRITY Port Changes
+- Reliance Edge can now be used from more than one AddressSpace, via the new
+  client-server implementation.  For cases where only one AddressSpace is
+  using Reliance Edge and the client-server overhead is undesirable, a
+  unified library is also offered; it runs in the same AddressSpace as the
+  application, similar to the v2.1 release.
+- The block device implementation has been updated to support IDE/ATA/SATA
+  devices.
+
+#### U-Boot Port Changes
+- Added support for the Universal Boot Loader (U-Boot) in the open-source kit.
+  This allows a system using U-Boot to boot from an operating system image or
+  kernel image stored on a Reliance Edge file system volume.
+- See the "U-Boot Integration" chapter of the _Developer's Guide_ for further
+  details on U-Boot support.
+
+### Reliance Edge v2.1, October 2017
+
+#### Common Code Changes
+- Added optional support for current working directories, relative paths, and
+  dot and dot-dot handling.  This includes the new red_chdir() and red_getcwd()
+  APIs.
+- A volume path prefix, by itself, is now a valid reference to the root
+  directory on that volume.  Assuming the path prefix is "VOL0:" and the path
+  separator character is '/', previously red_opendir("VOL0:/") would succeed and
+  red_opendir("VOL0:") would fail.  Now both will succeed.  This results in more
+  intuitive behavior when the volume path prefix is changed to look like a
+  directory, such as "/sdcard"; red_opendir("/sdcard") and red_chdir("/sdcard")
+  intuitively look like they should work, and now they do.
+- Updated the imgcopy utility to open files in binary mode.  When used on
+  Windows, this fixes a problem where Windows attempted to perform newline
+  conversion in binary files, corrupting the file data.
+- Fixed a bug in the POSIX-like API Test Suite which caused it to fail when run
+  on a volume other than volume zero.  Fixed another bug which caused it to
+  fail when the volume name was unusually long.
+- Added an option to FSIOTest to control flush frequency for the sequential
+  write and sequential rewrite tests.  Default behavior is unchanged.
+
+#### INTEGRITY Port Changes
+- Added support for the INTEGRITY RTOS in the commercial kit.  Reliance Edge
+  integrates into the INTEGRITY file system layer so that system calls like
+  open() or read() work with Reliance Edge; there is no need to update an
+  application to use Reliance Edge's POSIX-like API.
+- Example projects for the BeagleBone Black are provided.
+- For the time being, the osbdev.c implementation is only known to work with
+  the SD card driver supplied with the BeagleBone Black BSP.  It is known _not_
+  to work with the IDE driver used on x86 PCs.  Other storage drivers have not
+  been tested.
+- See the "INTEGRITY Integration" chapter of the _Developer's Guide_ for
+  further details on INTEGRITY support.  Please read this chapter before using
+  Reliance Edge on INTEGRITY.
+
+#### FreeRTOS Port Changes
+- Moved the several example implementations in osbdev.c into header files.
+- Added a "stub" example, which is now the default implementation for FreeRTOS,
+  and which deliberately does not compile.  This is to make it obvious that
+  FreeRTOS users need to make modifications to osbdev.c for their environment.
+- Added support for using Datalight FlashFX Tera as a block device.  This
+  support only exists in the commercial kit.
+- The Atmel Studio projects for the SAM4E-EK and SAM4S Xplained Pro boards are
+  no longer included in the open source kit; they are still available in the
+  commercial kit.
+
 ### Reliance Edge v2.0, January 2017
 
 - Added support for Linux as a host environment
@@ -48,7 +215,7 @@ recent releases and a list of known issues.
 
 - Added support for static memory allocation configuration in FreeRTOS
   version 9.  No common code changes.
-  
+
 ### Reliance Edge v1.0.2, February 2016
 
 #### Common Code Changes
@@ -72,7 +239,7 @@ recent releases and a list of known issues.
   Essentials API was selected in the configuration.
 - Fixed a bug which would have returned an uninitialized value from
   `RedOsBDevFlush()` for block devices that support flushing.
-  
+
 ### Reliance Edge v1.0.1, October 2015
 
 - Added MQX RTOS support in the commercial kit, with example projects for
@@ -82,7 +249,6 @@ recent releases and a list of known issues.
 ### Reliance Edge v1.0, July 2015
 
 #### Common Code Changes
-
 - First release of commercial kit and MISRA C:2012 Design Assurance Package.
   The commercial kit includes many new tools and tests which were not previously
   available.
@@ -123,13 +289,4 @@ recent releases and a list of known issues.
 ### Reliance Edge v0.9 (Beta), April 2015
 
 First public release.
-
-## Known Issues
-
-### Visual Studio 2005
-
-The Reliance Edge Win32 port (used for the host tools and the Win32 test
-project) cannot be compiled by Visual Studio 2005.  This is not going to be
-fixed since VS2005 is an old toolset.  Newer versions of Visual Studio, starting
-with Visual Studio 2008, work just fine.
 

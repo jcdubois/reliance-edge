@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -27,6 +27,30 @@
 */
 #ifndef REDAPIMACS_H
 #define REDAPIMACS_H
+
+
+/** Mount the volume as read-only. */
+#define RED_MOUNT_READONLY  0x00000001U
+
+/** Mount the volume with automatic discards enabled. */
+#define RED_MOUNT_DISCARD   0x00000002U
+
+#if (REDCONF_READ_ONLY == 0) && (RED_KIT != RED_KIT_GPL)
+/** Mask of all supported mount flags. */
+#define RED_MOUNT_MASK      (RED_MOUNT_READONLY | RED_MOUNT_DISCARD)
+#else
+/** Mask of all supported mount flags. */
+#define RED_MOUNT_MASK      RED_MOUNT_READONLY
+#endif
+
+/** @brief Default mount flags.
+
+    These are the mount flags that are used when Reliance Edge is mounted via an
+    API which does not allow mount flags to be specified: viz., red_mount() or
+    RedFseMount().  If red_mount2() is used, the flags provided to it supersede
+    these flags.
+*/
+#define RED_MOUNT_DEFAULT   (RED_MOUNT_DISCARD & RED_MOUNT_MASK)
 
 
 /** Clear all events: manual transactions only. */
@@ -65,9 +89,12 @@
 /** Transact to free space in disk full situations. */
 #define RED_TRANSACT_VOLFULL    0x00000400U
 
+/** Transact after a successful os sync. */
+#define RED_TRANSACT_SYNC       0x00000800U
+
 #if REDCONF_READ_ONLY == 1
 
-/** Mask of all supported automatic transaction events. */
+/** @brief Mask of all supported automatic transaction events. */
 #define RED_TRANSACT_MASK       0U
 
 #elif REDCONF_API_POSIX == 1
@@ -76,6 +103,7 @@
 */
 #define RED_TRANSACT_MASK                                                   \
 (                                                                           \
+    RED_TRANSACT_SYNC                                                   |   \
     RED_TRANSACT_UMOUNT                                                 |   \
     RED_TRANSACT_CREAT                                                  |   \
     ((REDCONF_API_POSIX_UNLINK    == 1) ? RED_TRANSACT_UNLINK   : 0U)   |   \

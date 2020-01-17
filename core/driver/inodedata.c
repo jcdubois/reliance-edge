@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -499,15 +499,27 @@ static REDSTATUS Shrink(
 
                 if(ret == 0)
                 {
+                    uint32_t ulDataBlocks;
+
                     if(fFreed)
                     {
                         pInode->pInodeBuf->aulEntries[uOrigInodeEntry] = BLOCK_SPARSE;
                     }
 
-                    /*  The next seek will go to the beginning of the next
-                        double indirect.
+                    /*  This is the number of blocks till the end of the double
+                        indirect.
                     */
-                    ulTruncBlock += (DINDIR_DATA_BLOCKS - (uOrigDindirEntry * INDIR_ENTRIES)) - uOrigIndirEntry;
+                    ulDataBlocks = (DINDIR_DATA_BLOCKS - (uOrigDindirEntry * INDIR_ENTRIES)) - uOrigIndirEntry;
+
+                    /*  In some cases, INODE_DATA_BLOCKS is UINT32_MAX, so make
+                        sure we do not increment above that.
+                    */
+                    ulDataBlocks = REDMIN(ulDataBlocks, INODE_DATA_BLOCKS - ulTruncBlock);
+
+                    /*  The next seek will go to the beginning of the next
+                        double indirect (or to the maximum inode size).
+                    */
+                    ulTruncBlock += ulDataBlocks;
                 }
             }
         }
@@ -585,8 +597,15 @@ static REDSTATUS TruncDindir(
         {
             uint32_t ulBlock = pInode->ulLogicalBlock;
             uint16_t uStart = pInode->uDindirEntry; /* pInode->uDindirEntry will change. */
+            uint32_t ulDindirOffset = (uint32_t)pInode->uIndirEntry + ((uint32_t)uStart * INDIR_ENTRIES);
+            uint32_t ulDindirDataBlock = ulBlock - ulDindirOffset;
+            uint32_t ulBlocksTillMax = INODE_DATA_BLOCKS - ulDindirDataBlock;
+            uint32_t ulDindirEntriesMax = (ulBlocksTillMax / INDIR_ENTRIES)
+                /* Rounding up in this way avoids 32-bit overflow. */
+                + (((ulBlocksTillMax % INDIR_ENTRIES) != 0U) ? (uint32_t)1U : (uint32_t)0U);
+            uint16_t uDindirEntries = (uint16_t)REDMIN(INDIR_ENTRIES, ulDindirEntriesMax);
 
-            for(uEntry = uStart; uEntry < INDIR_ENTRIES; uEntry++)
+            for(uEntry = uStart; uEntry < uDindirEntries; uEntry++)
             {
                 /*  Seek so that TruncIndir() has the correct indirect
                     buffer and indirect entry.
@@ -702,7 +721,10 @@ static REDSTATUS TruncIndir(
 
         if(ret == 0)
         {
-            for(uEntry = pInode->uIndirEntry; uEntry < INDIR_ENTRIES; uEntry++)
+            uint32_t ulIndirEntriesMax = INODE_DATA_BLOCKS - (pInode->ulLogicalBlock - pInode->uIndirEntry);
+            uint16_t uIndirEntries = (uint16_t)REDMIN(INDIR_ENTRIES, ulIndirEntriesMax);
+
+            for(uEntry = pInode->uIndirEntry; uEntry < uIndirEntries; uEntry++)
             {
                 ret = TruncDataBlock(pInode, &pInode->pIndir->aulEntries[uEntry], fBranch);
 

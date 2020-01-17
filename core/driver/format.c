@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -57,6 +57,12 @@ REDSTATUS RedVolFormat(void)
     {
         MASTERBLOCK    *pMB;
         REDSTATUS       ret2;
+
+        /*  fReadOnly might still be true from the last time the volume was
+            mounted (or from the checker).  Clear it now to avoid assertions in
+            lower-level code.
+        */
+        gpRedVolume->fReadOnly = false;
 
         /*  Overwrite the master block with zeroes, so that if formatting is
             interrupted, the volume will not be mountable.

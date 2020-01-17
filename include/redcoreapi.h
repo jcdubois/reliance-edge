@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -27,6 +27,10 @@
 #ifndef REDCOREAPI_H
 #define REDCOREAPI_H
 
+
+#if REDCONF_CHECKER == 1
+#include <stdio.h>
+#endif
 
 #include <redstat.h>
 
@@ -40,9 +44,9 @@ REDSTATUS RedCoreVolSetCurrent(uint8_t bVolNum);
 REDSTATUS RedCoreVolFormat(void);
 #endif
 #if REDCONF_CHECKER == 1
-REDSTATUS RedCoreVolCheck(void);
+REDSTATUS RedCoreVolCheck(FILE *pOutputFile, char *pszOutputBuffer, uint32_t nOutputBufferSize);
 #endif
-REDSTATUS RedCoreVolMount(void);
+REDSTATUS RedCoreVolMount(uint32_t ulFlags);
 REDSTATUS RedCoreVolUnmount(void);
 #if REDCONF_READ_ONLY == 0
 REDSTATUS RedCoreVolTransact(void);
@@ -88,8 +92,11 @@ REDSTATUS RedCoreFileWrite(uint32_t ulInode, uint64_t ullStart, uint32_t *pulLen
 REDSTATUS RedCoreFileTruncate(uint32_t ulInode, uint64_t ullSize);
 #endif
 
-#if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_READDIR == 1)
+#if (REDCONF_API_POSIX == 1) && ((REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1))
 REDSTATUS RedCoreDirRead(uint32_t ulInode, uint32_t *pulPos, char *pszName, uint32_t *pulInode);
+#endif
+#if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_CWD == 1)
+REDSTATUS RedCoreDirParent(uint32_t ulInode, uint32_t *pulPInode);
 #endif
 
 
