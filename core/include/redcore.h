@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -231,7 +231,7 @@ REDSTATUS RedDirEntryCreate(CINODE *pPInode, const char *pszName, uint32_t ulIno
 REDSTATUS RedDirEntryDelete(CINODE *pPInode, uint32_t ulDeleteIdx);
 #endif
 REDSTATUS RedDirEntryLookup(CINODE *pPInode, const char *pszName, uint32_t *pulEntryIdx, uint32_t *pulInode);
-#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_CHECKER == 1)
+#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1) || (REDCONF_CHECKER == 1)
 REDSTATUS RedDirEntryRead(CINODE *pPInode, uint32_t *pulIdx, char *pszName, uint32_t *pulInode);
 #endif
 #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX_RENAME == 1)
@@ -239,14 +239,14 @@ REDSTATUS RedDirEntryRename(CINODE *pSrcPInode, const char *pszSrcName, CINODE *
 #endif
 #endif
 
-REDSTATUS RedVolMount(void);
+REDSTATUS RedVolMount(uint32_t ulFlags);
 REDSTATUS RedVolMountMaster(void);
-REDSTATUS RedVolMountMetaroot(void);
+REDSTATUS RedVolMountMetaroot(uint32_t ulFlags);
 #if REDCONF_READ_ONLY == 0
 REDSTATUS RedVolTransact(void);
 #endif
 void RedVolCriticalError(const char *pszFileName, uint32_t ulLineNum);
-REDSTATUS RedVolSeqNumIncrement(void);
+REDSTATUS RedVolSeqNumIncrement(uint8_t bVolNum);
 
 #if FORMAT_SUPPORTED
 REDSTATUS RedVolFormat(void);

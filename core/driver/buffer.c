@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -89,10 +89,10 @@
 
 /*  A note on the typecasts in the below macros: Operands to bitwise operators
     are subject to the "usual arithmetic conversions".  This means that the
-    flags, which have uint16_t values, are promoted to int.  MISRA-C:2012 R10.1
-    forbids using signed integers in bitwise operations, so we cast to uint32_t
-    to avoid the integer promotion, then back to uint16_t to reflect the actual
-    type.
+    flags, which have uint16_t values, are promoted to int (if int is larger
+    than 16 bits).  MISRA-C:2012 R10.1 forbids using signed integers in bitwise
+    operations, so we cast to uint32_t to avoid the integer promotion, then back
+    to uint16_t to reflect the actual type.
 */
 #define BFLAG_META_MASK (uint16_t)((uint32_t)BFLAG_META_MASTER | BFLAG_META_IMAP | BFLAG_META_INODE | BFLAG_META_INDIR | BFLAG_META_DINDIR)
 #define BFLAG_MASK (uint16_t)((uint32_t)BFLAG_DIRTY | BFLAG_NEW | BFLAG_META_MASK)
@@ -147,11 +147,11 @@ typedef struct
 } BUFFERCTX;
 
 
-static bool BufferIsValid(const uint8_t  *pbBuffer, uint16_t uFlags);
+static bool BufferIsValid(const uint8_t *pbBuffer, uint16_t uFlags);
 static bool BufferToIdx(const void *pBuffer, uint8_t *pbIdx);
 #if REDCONF_READ_ONLY == 0
 static REDSTATUS BufferWrite(uint8_t bIdx);
-static REDSTATUS BufferFinalize(uint8_t *pbBuffer, uint16_t uFlags);
+static REDSTATUS BufferFinalize(uint8_t *pbBuffer, uint8_t bVolNum, uint16_t uFlags);
 #endif
 static void BufferMakeLRU(uint8_t bIdx);
 static void BufferMakeMRU(uint8_t bIdx);
@@ -788,7 +788,7 @@ static REDSTATUS BufferWrite(
 
         if((pHead->uFlags & BFLAG_META) != 0U)
         {
-            ret = BufferFinalize(gBufCtx.b.aabBuffer[bIdx], pHead->uFlags);
+            ret = BufferFinalize(gBufCtx.b.aabBuffer[bIdx], pHead->bVolNum, pHead->uFlags);
         }
 
         if(ret == 0)
@@ -816,6 +816,7 @@ static REDSTATUS BufferWrite(
     though this is only truly needed if the buffer is new.
 
     @param pbBuffer Pointer to the metadata buffer to finalize.
+    @param bVolNum  The volume number for the metadata buffer.
     @param uFlags   The associated buffer flags.  Used to determine the expected
                     signature.
 
@@ -826,11 +827,12 @@ static REDSTATUS BufferWrite(
 */
 static REDSTATUS BufferFinalize(
     uint8_t    *pbBuffer,
+    uint8_t     bVolNum,
     uint16_t    uFlags)
 {
     REDSTATUS   ret = 0;
 
-    if((pbBuffer == NULL) || ((uFlags & BFLAG_MASK) != uFlags))
+    if((pbBuffer == NULL) || (bVolNum >= REDCONF_VOLUME_COUNT) || ((uFlags & BFLAG_MASK) != uFlags))
     {
         REDERROR();
         ret = -RED_EINVAL;
@@ -874,9 +876,9 @@ static REDSTATUS BufferFinalize(
         }
         else
         {
-            uint64_t ullSeqNum = gpRedVolume->ullSequence;
+            uint64_t ullSeqNum = gaRedVolume[bVolNum].ullSequence;
 
-            ret = RedVolSeqNumIncrement();
+            ret = RedVolSeqNumIncrement(bVolNum);
             if(ret == 0)
             {
                 uint32_t ulCrc;

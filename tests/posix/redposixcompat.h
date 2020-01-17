@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -102,6 +102,8 @@
 #undef readdir
 #undef rewinddir
 #undef closedir
+#undef chdir
+#undef getcwd
 #define open(path, oflag) red_open(path, oflag)
 #define creat(path, mode) open(path, O_WRONLY|O_CREAT|O_TRUNC)
 #define unlink(path) red_unlink(path)
@@ -124,6 +126,8 @@
 #define readdir64(dirp) readdir(dirp)
 #define rewinddir(dirp) red_rewinddir(dirp)
 #define closedir(dirp) red_closedir(dirp)
+#define chdir(path) red_chdir(path)
+#define getcwd(buffer, size) red_getcwd(buffer, size)
 
 #undef DIR
 #define DIR REDDIR

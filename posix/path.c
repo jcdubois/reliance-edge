@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -35,45 +35,45 @@
 #include <redpath.h>
 
 
+static REDSTATUS PathWalk(uint32_t ulCwdInode, const char *pszLocalPath, REDSTATUS rootDirError, uint32_t *pulPInode, const char **ppszName, uint32_t *pulInode);
 static bool IsRootDir(const char *pszLocalPath);
-static bool PathHasMoreNames(const char *pszPathIdx);
+static bool PathHasMoreComponents(const char *pszPathIdx);
+#if REDCONF_API_POSIX_CWD == 1
+static bool IsDot(const char *pszPathComponent);
+static bool IsDotDot(const char *pszPathComponent);
+static bool IsDotOrDotDot(const char *pszPathComponent);
+static REDSTATUS InodeMustBeDir(uint32_t ulInode);
+#endif
 
 
-/** @brief Split a path into its component parts: a volume and a volume-local
-           path.
+/** @brief Convert a volume path prefix to a volume number.
 
-    @param pszPath          The path to split.
-    @param pbVolNum         On successful return, if non-NULL, populated with
-                            the volume number extracted from the path.
-    @param ppszLocalPath    On successful return, populated with the
-                            volume-local path: the path stripped of any volume
-                            path prefixing.  If this parameter is NULL, that
-                            indicates there should be no local path, and any
-                            characters beyond the prefix (other than path
-                            separators) are treated as an error.
+    As a side-effect, the volume named by the path prefix becomes the current
+    volume.
+
+    @param pszPath  The path which includes the volume path prefix to parse.
+                    Characters after the volume path prefix are ignored.
+    @param pbVolNum On successful return, populated with the volume number
+                    associated with the named volume.
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
-    @retval -RED_EINVAL @p pszPath is `NULL`.
-    @retval -RED_ENOENT @p pszPath could not be matched to any volume; or
-                        @p ppszLocalPath is NULL but @p pszPath includes a local
-                        path.
+    @retval -RED_EINVAL @p pszPath or @p pbVolNum is `NULL`.
+    @retval -RED_ENOENT @p pszPath could not be matched to any volume.
 */
-REDSTATUS RedPathSplit(
-    const char     *pszPath,
-    uint8_t        *pbVolNum,
-    const char    **ppszLocalPath)
+REDSTATUS RedPathVolumePrefixLookup(
+    const char *pszPath,
+    uint8_t    *pbVolNum)
 {
-    REDSTATUS       ret = 0;
+    REDSTATUS   ret = 0;
 
-    if(pszPath == NULL)
+    if((pszPath == NULL) || (pbVolNum == NULL))
     {
         ret = -RED_EINVAL;
     }
     else
     {
-        const char *pszLocalPath = pszPath;
         uint8_t     bMatchVol = UINT8_MAX;
         uint32_t    ulMatchLen = 0U;
         uint8_t     bDefaultVolNum = UINT8_MAX;
@@ -134,7 +134,6 @@ REDSTATUS RedPathSplit(
             /*  The path matched a volume path prefix.
             */
             bVolNum = bMatchVol;
-            pszLocalPath = &pszPath[ulMatchLen];
         }
         else if(bDefaultVolNum != UINT8_MAX)
         {
@@ -143,7 +142,7 @@ REDSTATUS RedPathSplit(
                 assigned to that volume.
             */
             bVolNum = bDefaultVolNum;
-            REDASSERT(pszLocalPath == pszPath);
+            REDASSERT(ulMatchLen == 0U);
         }
         else
         {
@@ -152,33 +151,71 @@ REDSTATUS RedPathSplit(
             ret = -RED_ENOENT;
         }
 
+      #if REDCONF_VOLUME_COUNT > 1U
         if(ret == 0)
         {
-            if(pbVolNum != NULL)
-            {
-                *pbVolNum = bVolNum;
-            }
+            ret = RedCoreVolSetCurrent(bVolNum);
+        }
+      #endif
 
-            if(ppszLocalPath != NULL)
+        if(ret == 0)
+        {
+            *pbVolNum = bVolNum;
+        }
+    }
+
+    return ret;
+}
+
+
+/** @brief Convert a volume name to a volume number.
+
+    As a side-effect, the named volume becomes the current volume.
+
+    @param pszVolume    The volume path to parse.  Any characters beyond the
+                        volume name, other than path separators, will result in
+                        an error.
+    @param pbVolNum     If non-NULL, on successful return, populated with the
+                        volume number associated with the named volume.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL @p pszVolume is `NULL`.
+    @retval -RED_ENOENT @p pszVolume could not be matched to any volume: this
+                        includes the case where @p pszVolume begins with a
+                        volume prefix but contains further characters other than
+                        path separators.
+*/
+REDSTATUS RedPathVolumeLookup(
+    const char *pszVolume,
+    uint8_t    *pbVolNum)
+{
+    uint8_t     bVolNum;
+    REDSTATUS   ret;
+
+    ret = RedPathVolumePrefixLookup(pszVolume, &bVolNum);
+    if(ret == 0)
+    {
+        const char *pszExtraPath = &pszVolume[RedStrLen(gpRedVolConf->pszPathPrefix)];
+
+        /*  Since this string is expected to name a volume, it should either
+            terminate after the volume prefix or contain only path separators.
+            Allowing path separators here means that red_mount("/data/") is OK
+            with a path prefix of "/data".
+        */
+        if(pszExtraPath[0U] != '\0')
+        {
+            if(!IsRootDir(pszExtraPath))
             {
-                *ppszLocalPath = pszLocalPath;
-            }
-            else
-            {
-                /*  If no local path is expected, then the string should either
-                    terminate after the path prefix or the local path should name
-                    the root directory.  Allowing path separators here means that
-                    red_mount("/data/") is OK with a path prefix of "/data".
-                */
-                if(pszLocalPath[0U] != '\0')
-                {
-                    if(!IsRootDir(pszLocalPath))
-                    {
-                        ret = -RED_ENOENT;
-                    }
-                }
+                ret = -RED_ENOENT;
             }
         }
+    }
+
+    if((ret == 0) && (pbVolNum != NULL))
+    {
+        *pbVolNum = bVolNum;
     }
 
     return ret;
@@ -187,6 +224,10 @@ REDSTATUS RedPathSplit(
 
 /** @brief Lookup the inode named by the given path.
 
+    @param ulCwdInode   The current working directory inode: i.e., the directory
+                        inode from which to start parsing @p pszLocalPath.  If
+                        @p pszLocalPath is an absolute path, this should be
+                        `INODE_ROOTDIR`.
     @param pszLocalPath The path to lookup; this is a local path, without any
                         volume prefix.
     @param pulInode     On successful return, populated with the number of the
@@ -198,8 +239,7 @@ REDSTATUS RedPathSplit(
     @retval -RED_EINVAL         @p pszLocalPath is `NULL`; or @p pulInode is
                                 `NULL`.
     @retval -RED_EIO            A disk I/O error occurred.
-    @retval -RED_ENOENT         @p pszLocalPath is an empty string; or
-                                @p pszLocalPath does not name an existing file
+    @retval -RED_ENOENT         @p pszLocalPath does not name an existing file
                                 or directory.
     @retval -RED_ENOTDIR        A component of the path other than the last is
                                 not a directory.
@@ -207,36 +247,20 @@ REDSTATUS RedPathSplit(
                                 longer than #REDCONF_NAME_MAX.
 */
 REDSTATUS RedPathLookup(
+    uint32_t    ulCwdInode,
     const char *pszLocalPath,
     uint32_t   *pulInode)
 {
     REDSTATUS   ret;
 
-    if((pszLocalPath == NULL) || (pulInode == NULL))
+    if(pulInode == NULL)
     {
         REDERROR();
         ret = -RED_EINVAL;
     }
-    else if(pszLocalPath[0U] == '\0')
-    {
-        ret = -RED_ENOENT;
-    }
-    else if(IsRootDir(pszLocalPath))
-    {
-        ret = 0;
-        *pulInode = INODE_ROOTDIR;
-    }
     else
     {
-        uint32_t    ulPInode;
-        const char *pszName;
-
-        ret = RedPathToName(pszLocalPath, &ulPInode, &pszName);
-
-        if(ret == 0)
-        {
-            ret = RedCoreLookup(ulPInode, pszName, pulInode);
-        }
+        ret = PathWalk(ulCwdInode, pszLocalPath, 0, NULL, NULL, pulInode);
     }
 
     return ret;
@@ -246,8 +270,16 @@ REDSTATUS RedPathLookup(
 /** @brief Given a path, return the parent inode number and a pointer to the
            last component in the path (the name).
 
+    @param ulCwdInode   The current working directory inode: i.e., the directory
+                        inode from which to start parsing @p pszLocalPath.  If
+                        @p pszLocalPath is an absolute path, this should be
+                        `INODE_ROOTDIR`.
     @param pszLocalPath The path to examine; this is a local path, without any
                         volume prefix.
+    @param rootDirError Error to return if the path resolves to the root
+                        directory.  Must be nonzero, since this function cannot
+                        populate @p pulPInode or @p ppszName for the root
+                        directory.
     @param pulPInode    On successful return, populated with the inode number of
                         the parent directory of the last component in the path.
                         For example, with the path "a/b/c", populated with the
@@ -260,52 +292,147 @@ REDSTATUS RedPathLookup(
 
     @retval 0                   Operation was successful.
     @retval -RED_EINVAL         @p pszLocalPath is `NULL`; or @p pulPInode is
-                                `NULL`; or @p ppszName is `NULL`; or the path
-                                names the root directory.
+                                `NULL`; or @p ppszName is `NULL`; or
+                                @p rootDirError is zero; or
+                                #REDCONF_API_POSIX_CWD is true and the last
+                                component of the path is dot or dot-dot.
     @retval -RED_EIO            A disk I/O error occurred.
-    @retval -RED_ENOENT         @p pszLocalPath is an empty string; or a
-                                component of the path other than the last does
-                                not exist.
+    @retval -RED_ENOENT         A component of @p pszLocalPath other than the
+                                last does not exist.
     @retval -RED_ENOTDIR        A component of the path other than the last is
                                 not a directory.
     @retval -RED_ENAMETOOLONG   The length of a component of @p pszLocalPath is
                                 longer than #REDCONF_NAME_MAX.
+    @retval rootDirError        The path names the root directory.
 */
 REDSTATUS RedPathToName(
+    uint32_t        ulCwdInode,
     const char     *pszLocalPath,
+    REDSTATUS       rootDirError,
     uint32_t       *pulPInode,
     const char    **ppszName)
 {
     REDSTATUS       ret;
 
-    if((pszLocalPath == NULL) || (pulPInode == NULL) || (ppszName == NULL))
+    if((rootDirError == 0) || (pulPInode == NULL) || (ppszName == NULL))
     {
         REDERROR();
         ret = -RED_EINVAL;
     }
-    else if(IsRootDir(pszLocalPath))
+    else
     {
-        ret = -RED_EINVAL;
+        ret = PathWalk(ulCwdInode, pszLocalPath, rootDirError, pulPInode, ppszName, NULL);
+      #if REDCONF_API_POSIX_CWD == 1
+        if(ret == 0)
+        {
+            /*  Error if the last path component is dot or dot-dot.  For some
+                of the callers, an error is required by POSIX; for the others,
+                the complexity of allowing this is not worth it.  The Linux
+                implementation of the relevant POSIX functions always fail when
+                the path ends with dot or dot-dot, though not always for the
+                same reason or with the same errno.
+            */
+            if(IsDotOrDotDot(*ppszName))
+            {
+                /*  Depending on the situation, POSIX would have this fail with
+                    one of several different errors: EINVAL, ENOTEMPTY, EEXIST,
+                    EISDIR, or EPERM.  For simplicity, we ignore those
+                    distinctions and return the same error in all cases.
+                */
+                ret = -RED_EINVAL;
+            }
+        }
+      #endif
     }
-    else if(pszLocalPath[0U] == '\0')
+
+    return ret;
+}
+
+
+/** @brief Walk the given path to the file or directory it names, producing a
+           parent inode, final path component, and/or inode number.
+
+    @param ulCwdInode   The current working directory inode: i.e., the directory
+                        inode from which to start parsing @p pszLocalPath.  If
+                        @p pszLocalPath is an absolute path, this should be
+                        `INODE_ROOTDIR`.
+    @param pszLocalPath The path to examine; this is a local path, without any
+                        volume prefix.
+    @param rootDirError Error to return if @p pulPInode is non-`NULL` and the
+                        path resolves to the root directory.  Must be nonzero
+                        unless @p pulPInode is `NULL`.
+    @param pulPInode    On successful return, if non-NULL, populated with the
+                        inode number of the parent directory of the last
+                        component in the path.  For example, with the path
+                        "a/b/c", populated with the inode number of "b".
+    @param ppszName     On successful return, if non-NULL, populated with a
+                        pointer to the last component in the path.  For example,
+                        with the path "a/b/c", populated with a pointer to "c".
+                        With the path "a/..", populated with a pointer to "..".
+    @param pulInode     On successful return, if non-NULL, populated with the
+                        number of the inode named by @p pszLocalPath.  If NULL,
+                        the last component in the path is not looked-up, and
+                        there will be no error if it does not exist.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0                   Operation was successful.
+    @retval -RED_EINVAL         @p pszLocalPath is `NULL`; or @p ulCwdInode is
+                                invalid; or @p pulPInode is non-`NULL`,
+                                indicating the caller wanted the parent inode,
+                                but @p rootDirError is zero, which gives us no
+                                error to return if the path names the root
+                                directory (which has no parent inode).
+    @retval -RED_EIO            A disk I/O error occurred.
+    @retval -RED_ENOENT         A component of @p pszLocalPath does not exist
+                                (possibly excepting the last component,
+                                depending on whether @p pulInode is NULL).
+    @retval -RED_ENOTDIR        A component of the path other than the last is
+                                not a directory.
+    @retval -RED_ENAMETOOLONG   The length of a component of @p pszLocalPath is
+                                longer than #REDCONF_NAME_MAX.
+    @retval rootDirError        @p pulPInode is non-`NULL` and the path names
+                                the root directory.
+*/
+static REDSTATUS PathWalk(
+    uint32_t        ulCwdInode,
+    const char     *pszLocalPath,
+    REDSTATUS       rootDirError,
+    uint32_t       *pulPInode,
+    const char    **ppszName,
+    uint32_t       *pulInode)
+{
+    REDSTATUS       ret = 0;
+
+    if(
+         #if REDCONF_API_POSIX_CWD == 1
+           (ulCwdInode == INODE_INVALID)
+         #else
+           (ulCwdInode != INODE_ROOTDIR)
+         #endif
+        || (pszLocalPath == NULL)
+        || ((pulPInode != NULL) && (rootDirError == 0)))
     {
-        ret = -RED_ENOENT;
+        REDERROR();
+        ret = -RED_EINVAL;
     }
     else
     {
-        uint32_t ulInode = INODE_ROOTDIR;
-        uint32_t ulPInode = INODE_INVALID;
+        uint32_t ulInode = ulCwdInode;
+        uint32_t ulPInode;
         uint32_t ulPathIdx = 0U;
         uint32_t ulLastNameIdx = 0U;
 
-        ret = 0;
+      #if REDCONF_API_POSIX_CWD == 1
+        ret = RedCoreDirParent(ulInode, &ulPInode);
+      #else
+        ulPInode = INODE_INVALID;
+      #endif
 
-        do
+        while(ret == 0)
         {
-            uint32_t ulNameLen;
-
             /*  Skip over path separators, to get pszLocalPath[ulPathIdx]
-                pointing at the next name.
+                pointing at the next path component.
             */
             while(pszLocalPath[ulPathIdx] == REDCONF_PATH_SEPARATOR)
             {
@@ -317,41 +444,111 @@ REDSTATUS RedPathToName(
                 break;
             }
 
-            /*  Point ulLastNameIdx at the first character of the name; after
-                we exit the loop, it will point at the first character of the
-                last name in the path.
+            /*  Point ulLastNameIdx at the first character of the path
+                component; after we exit the loop, it will point at the first
+                character of the very last path component (name, dot, or
+                dot-dot).
             */
             ulLastNameIdx = ulPathIdx;
 
-            /*  Point ulPInode at the parent inode: either the root inode
-                (first pass) or the inode of the previous name.  After we exit
-                the loop, this will point at the parent inode of the last name.
-            */
-            ulPInode = ulInode;
-
-            ulNameLen = RedNameLen(&pszLocalPath[ulPathIdx]);
-
-            /*  Lookup the inode of the name, unless we are at the last name in
-                the path: we don't care whether the last name exists or not.
-            */
-            if(PathHasMoreNames(&pszLocalPath[ulPathIdx + ulNameLen]))
+          #if REDCONF_API_POSIX_CWD == 1
+            if(IsDot(&pszLocalPath[ulPathIdx]))
             {
-                ret = RedCoreLookup(ulPInode, &pszLocalPath[ulPathIdx], &ulInode);
+                /*  E.g., "foo/." is valid only if "foo" is a directory.
+                */
+                ret = InodeMustBeDir(ulInode);
+                if(ret == 0)
+                {
+                    ulPathIdx++; /* Move past the "." to the next component */
+                }
             }
-
-            /*  Move on to the next path element.
-            */
-            if(ret == 0)
+            else if(IsDotDot(&pszLocalPath[ulPathIdx]))
             {
-                ulPathIdx += ulNameLen;
+                /*  E.g., "foo/.." is valid only if "foo" is a directory.
+                */
+                ret = InodeMustBeDir(ulInode);
+                if(ret == 0)
+                {
+                    /*  "As a special case, in the root directory, dot-dot may
+                        refer to the root directory itself."  So sayeth POSIX.
+                        Although it says "may", this seems to be the norm (e.g.,
+                        on Linux), so implement that behavior here.
+                    */
+                    if(ulInode != INODE_ROOTDIR)
+                    {
+                        /*  Update ulInode to its parent.
+                        */
+                        ulInode = ulPInode;
+                    }
+
+                    /*  Update ulPInode to be ulInode's parent -- if there are
+                        no more names in the path, this is needed for ulPInode
+                        to be correct when the loop ends.
+                    */
+                    ret = RedCoreDirParent(ulInode, &ulPInode);
+                }
+
+                if(ret == 0)
+                {
+                    ulPathIdx += 2U; /* Move past the ".." to the next component */
+                }
+            }
+            else
+          #endif /* REDCONF_API_POSIX_CWD == 1 */
+            {
+                uint32_t ulNameLen;
+
+                /*  Point ulPInode at the parent inode.  After we exit the loop,
+                    this will point at the parent inode of the last name.
+                */
+                ulPInode = ulInode;
+
+                ulNameLen = RedNameLen(&pszLocalPath[ulPathIdx]);
+
+                /*  Lookup the inode of the name; if we are at the last name in
+                    the path, only lookup the inode if requested.
+                */
+                if(    PathHasMoreComponents(&pszLocalPath[ulPathIdx + ulNameLen])
+                    || (pulInode != NULL))
+                {
+                    ret = RedCoreLookup(ulPInode, &pszLocalPath[ulPathIdx], &ulInode);
+                }
+
+                /*  Move on to the next path component.
+                */
+                if(ret == 0)
+                {
+                    ulPathIdx += ulNameLen;
+                }
             }
         }
-        while(ret == 0);
+
+        if((ret == 0) && (pulPInode != NULL))
+        {
+            if(ulPInode == INODE_INVALID)
+            {
+                /*  If we get here, the path resolved the root directory, which
+                    has no parent inode.
+                */
+                ret = rootDirError;
+            }
+            else
+            {
+                *pulPInode = ulPInode;
+            }
+        }
 
         if(ret == 0)
         {
-            *pulPInode = ulPInode;
-            *ppszName = &pszLocalPath[ulLastNameIdx];
+            if(ppszName != NULL)
+            {
+                *ppszName = &pszLocalPath[ulLastNameIdx];
+            }
+
+            if(pulInode != NULL)
+            {
+                *pulInode = ulInode;
+            }
         }
     }
 
@@ -400,7 +597,9 @@ static bool IsRootDir(
 }
 
 
-/** @brief Determine whether there are more names in a path.
+/** @brief Determine whether there are more components in a path.
+
+    A "component" is a name, dot, or dot-dot.
 
     Example | Result
     ------- | ------
@@ -410,16 +609,18 @@ static bool IsRootDir(
     "a"       true
     "/a"      true
     "//a"     true
+    ".."      true
+    "/."      true
 
     @param pszPathIdx   The path to examine, incremented to the point of
                         interest.
 
-    @return Returns whether there are more names in @p pszPathIdx.
+    @return Returns whether there are more components in @p pszPathIdx.
 
-    @retval true    @p pszPathIdx has more names.
-    @retval false   @p pszPathIdx has no more names.
+    @retval true    @p pszPathIdx has more components.
+    @retval false   @p pszPathIdx has no more components.
 */
-static bool PathHasMoreNames(
+static bool PathHasMoreComponents(
     const char *pszPathIdx)
 {
     bool        fRet;
@@ -443,6 +644,110 @@ static bool PathHasMoreNames(
 
     return fRet;
 }
+
+
+#if REDCONF_API_POSIX_CWD == 1
+/** @brief Determine whether a path component is dot.
+
+    @param pszPathComponent The path component to examine.
+
+    @return Returns whether @p pszPathComponent is dot.
+
+    @retval true    @p pszPathComponent is dot.
+    @retval false   @p pszPathComponent is not dot.
+*/
+static bool IsDot(
+    const char *pszPathComponent)
+{
+    /*  Match "." or "./"
+    */
+    return (pszPathComponent != NULL)
+        && (pszPathComponent[0U] == '.')
+        && ((pszPathComponent[1U] == '\0') || (pszPathComponent[1U] == REDCONF_PATH_SEPARATOR));
+}
+
+
+/** @brief Determine whether a path component is dot-dot.
+
+    @param pszPathComponent The path component to examine.
+
+    @return Returns whether @p pszPathComponent is dot-dot.
+
+    @retval true    @p pszPathComponent is dot-dot.
+    @retval false   @p pszPathComponent is not dot-dot.
+*/
+static bool IsDotDot(
+    const char *pszPathComponent)
+{
+    /*  Match ".." or "../"
+    */
+    return (pszPathComponent != NULL)
+        && (pszPathComponent[0U] == '.')
+        && (pszPathComponent[1U] == '.')
+        && ((pszPathComponent[2U] == '\0') || (pszPathComponent[2U] == REDCONF_PATH_SEPARATOR));
+}
+
+
+/** @brief Determine whether a path component is dot or dot-dot.
+
+    @param pszPathComponent The path component to examine.
+
+    @return Returns whether @p pszPathComponent is dot or dot-dot.
+
+    @retval true    @p pszPathComponent is dot or dot-dot.
+    @retval false   @p pszPathComponent is not dot or dot-dot.
+*/
+static bool IsDotOrDotDot(
+    const char *pszPathComponent)
+{
+    bool fRet;
+
+    /*  Not using "IsDot(p) || IsDotDot(p)" because that would be flagged as a
+        violation of MISRA C:2012 Rule 13.5 -- which is a false positive since
+        IsDotDot() does not have side effects.
+    */
+    fRet = IsDot(pszPathComponent);
+    if(!fRet)
+    {
+        fRet = IsDotDot(pszPathComponent);
+    }
+
+    return fRet;
+}
+
+
+/** @brief Make sure the given inode is a directory.
+
+    @param ulInode  The inode to examine.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0               Operation was successful: @p ulInode is a directory.
+    @retval -RED_EBADF      @p ulInode is not a valid inode.
+    @retval -RED_EIO        A disk I/O error occurred.
+    @retval -RED_ENOTDIR    @p ulInode is not a directory.
+*/
+static REDSTATUS InodeMustBeDir(
+    uint32_t    ulInode)
+{
+    REDSTATUS   ret = 0;
+
+    /*  Root directory is, by definition, a directory.
+    */
+    if(ulInode != INODE_ROOTDIR)
+    {
+        REDSTAT sb;
+
+        ret = RedCoreStat(ulInode, &sb);
+        if((ret == 0) && !RED_S_ISDIR(sb.st_mode))
+        {
+            ret = -RED_ENOTDIR;
+        }
+    }
+
+    return ret;
+}
+#endif /* REDCONF_API_POSIX_CWD == 1 */
 
 #endif /* REDCONF_API_POSIX */
 

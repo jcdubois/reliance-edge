@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,15 +17,14 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
 */
 /** @file
-    @brief Implementation of the the Reliance Edge POSIX-like API.
+    @brief Implementation of the Reliance Edge POSIX-like API.
 */
-
 #include <redfs.h>
 
 #if REDCONF_API_POSIX == 1
@@ -104,6 +103,16 @@ typedef struct sREDHANDLE
     Tasks
 -------------------------------------------------------------------*/
 
+#if REDCONF_API_POSIX_CWD == 1
+/*  @brief Current working directory.
+*/
+typedef struct
+{
+    uint8_t     bVolNum;    /**< Volume containing the CWD. */
+    uint32_t    ulInode;    /**< Inode number of CWD. */
+} WORKDIR;
+#endif
+
 #if REDCONF_TASK_COUNT > 1U
 /*  @brief Per-task information.
 */
@@ -111,6 +120,9 @@ typedef struct
 {
     uint32_t    ulTaskId;   /**< ID of the task which owns this slot; 0 if free. */
     REDSTATUS   iErrno;     /**< Last error value. */
+  #if REDCONF_API_POSIX_CWD == 1
+    WORKDIR     cwd;        /**< Current working directory. */
+  #endif
 } TASKSLOT;
 #endif
 
@@ -121,6 +133,7 @@ typedef struct
 #if (REDCONF_READ_ONLY == 0) && ((REDCONF_API_POSIX_UNLINK == 1) || (REDCONF_API_POSIX_RMDIR == 1))
 static REDSTATUS UnlinkSub(const char *pszPath, FTYPE type);
 #endif
+static REDSTATUS PathStartingPoint(const char *pszPath, uint8_t *pbVolNum, uint32_t *pulCwdInode, const char **ppszLocalPath);
 static REDSTATUS FildesOpen(const char *pszPath, uint32_t ulOpenMode, FTYPE type, int32_t *piFildes);
 static REDSTATUS FildesClose(int32_t iFildes);
 static REDSTATUS FildesToHandle(int32_t iFildes, FTYPE expectedType, REDHANDLE **ppHandle);
@@ -138,6 +151,11 @@ static REDSTATUS InodeUnlinkCheck(uint32_t ulInode);
 #if REDCONF_TASK_COUNT > 1U
 static REDSTATUS TaskRegister(uint32_t *pulTaskIdx);
 #endif
+#if REDCONF_API_POSIX_CWD == 1
+static WORKDIR *CwdGet(void);
+static void CwdResetVol(uint8_t bVolNum);
+static void CwdResetAll(void);
+#endif
 static int32_t PosixReturn(REDSTATUS iError);
 
 /*-------------------------------------------------------------------
@@ -148,6 +166,9 @@ static bool gfPosixInited;                              /* Whether driver is ini
 static REDHANDLE gaHandle[REDCONF_HANDLE_COUNT];        /* Array of all handles. */
 #if REDCONF_TASK_COUNT > 1U
 static TASKSLOT gaTask[REDCONF_TASK_COUNT];             /* Array of task slots. */
+#endif
+#if (REDCONF_TASK_COUNT == 1U) && (REDCONF_API_POSIX_CWD == 1)
+static WORKDIR gCwd;                                    /* Current working directory. */
 #endif
 
 /*  Array of volume mount "generations".  These are incremented for a volume
@@ -198,6 +219,10 @@ int32_t red_init(void)
 
           #if REDCONF_TASK_COUNT > 1U
             RedMemSet(gaTask, 0U, sizeof(gaTask));
+          #endif
+
+          #if REDCONF_API_POSIX_CWD == 1
+            CwdResetAll();
           #endif
 
             gfPosixInited = true;
@@ -288,6 +313,72 @@ int32_t red_uninit(void)
 }
 
 
+#if REDCONF_READ_ONLY == 0
+/** @brief Commits file system updates.
+
+    Commits all changes on all file system volumes to permanent storage.  This
+    function will not return until the operation is complete.
+
+    If sync automatic transactions have been disabled for one or more volumes,
+    this function does not commit changes to those volumes, but will still
+    commit changes to any volumes for which automatic transactions are enabled.
+
+    If sync automatic transactions have been disabled on all volumes, this
+    function does nothing and returns success.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+        #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EIO: I/O error during the transaction point.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_sync(void)
+{
+    REDSTATUS ret;
+
+    ret = PosixEnter();
+    if(ret == 0)
+    {
+        uint8_t bVolNum;
+
+        for(bVolNum = 0U; bVolNum < REDCONF_VOLUME_COUNT; bVolNum++)
+        {
+            if(gaRedVolume[bVolNum].fMounted && !gaRedVolume[bVolNum].fReadOnly)
+            {
+                REDSTATUS err;
+
+              #if REDCONF_VOLUME_COUNT > 1U
+                err = RedCoreVolSetCurrent(bVolNum);
+
+                if(err == 0)
+              #endif
+                {
+                    uint32_t ulTransMask;
+
+                    err = RedCoreTransMaskGet(&ulTransMask);
+
+                    if((err == 0) && ((ulTransMask & RED_TRANSACT_SYNC) != 0U))
+                    {
+                        err = RedCoreVolTransact();
+                    }
+                }
+
+                if(err != 0)
+                {
+                    ret = err;
+                }
+            }
+        }
+
+        PosixLeave();
+    }
+
+    return PosixReturn(ret);
+}
+#endif
+
+
 /** @brief Mount a file system volume.
 
     Prepares the file system volume to be accessed.  Mount will fail if the
@@ -311,34 +402,67 @@ int32_t red_uninit(void)
 int32_t red_mount(
     const char *pszVolume)
 {
+    return red_mount2(pszVolume, RED_MOUNT_DEFAULT);
+}
+
+
+/** @brief Mount a file system volume with flags.
+
+    Prepares the file system volume to be accessed.  Mount will fail if the
+    volume has never been formatted, or if the on-disk format is inconsistent
+    with the compile-time configuration.
+
+    An error is returned if the volume is already mounted.
+
+    The following mount flags are available:
+
+    - #RED_MOUNT_READONLY: If specified, the volume will be mounted read-only.
+      All write operations with fail, setting #red_errno to #RED_EROFS.
+    - #RED_MOUNT_DISCARD: If specified, and if the underlying block device
+      supports discards, discards will be issued for blocks that become free.
+      If the underlying block device does _not_ support discards, then this
+      flag has no effect.
+
+    The #RED_MOUNT_DEFAULT macro can be used to mount with the default mount
+    flags, which is equivalent to mounting with red_mount().
+
+    @param pszVolume    A path prefix identifying the volume to mount.
+    @param ulFlags      A bitwise-OR'd mask of mount flags.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBUSY: Volume is already mounted.
+    - #RED_EINVAL: @p pszVolume is `NULL`; or the driver is uninitialized; or
+      @p ulFlags includes invalid mount flags.
+    - #RED_EIO: Volume not formatted, improperly formatted, or corrupt.
+    - #RED_ENOENT: @p pszVolume is not a valid volume path prefix.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_mount2(
+    const char *pszVolume,
+    uint32_t    ulFlags)
+{
     REDSTATUS   ret;
 
     ret = PosixEnter();
 
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         /*  The core will return success if the volume is already mounted, so
             check for that condition here to propagate the error.
         */
-        if((ret == 0) && gaRedVolume[bVolNum].fMounted)
+        if((ret == 0) && gpRedVolume->fMounted)
         {
             ret = -RED_EBUSY;
         }
 
-      #if REDCONF_VOLUME_COUNT > 1U
         if(ret == 0)
         {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
-
-        if(ret == 0)
-        {
-            ret = RedCoreVolMount();
+            ret = RedCoreVolMount(ulFlags);
         }
 
         if(ret == 0)
@@ -349,8 +473,8 @@ int32_t red_mount(
                 generations in the file descriptors, so we must wrap-around
                 manually.
             */
-            gauGeneration[bVolNum]++;
-            if(gauGeneration[bVolNum] > FD_GEN_MAX)
+            gauGeneration[gbRedVolNum]++;
+            if(gauGeneration[gbRedVolNum] > FD_GEN_MAX)
             {
                 /*  Wrap-around to one, rather than zero.  The generation is
                     stored in the top bits of the file descriptor, and doing
@@ -359,7 +483,7 @@ int32_t red_mount(
                     and 2 are never valid file descriptors, thereby avoiding
                     confusion with STDIN, STDOUT, and STDERR.
                 */
-                gauGeneration[bVolNum] = 1U;
+                gauGeneration[gbRedVolNum] = 1U;
             }
         }
 
@@ -413,12 +537,12 @@ int32_t red_umount(
     {
         uint8_t bVolNum;
 
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
+        ret = RedPathVolumeLookup(pszVolume, &bVolNum);
 
         /*  The core will return success if the volume is already unmounted, so
             check for that condition here to propagate the error.
         */
-        if((ret == 0) && !gaRedVolume[bVolNum].fMounted)
+        if((ret == 0) && !gpRedVolume->fMounted)
         {
             ret = -RED_EINVAL;
         }
@@ -441,17 +565,19 @@ int32_t red_umount(
             }
         }
 
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
-
         if(ret == 0)
         {
             ret = RedCoreVolUnmount();
         }
+
+      #if REDCONF_API_POSIX_CWD == 1
+        /*  Reset the CWD for any task whose CWD was on the unmounted volume.
+        */
+        if(ret == 0)
+        {
+            CwdResetVol(bVolNum);
+        }
+      #endif
 
         PosixLeave();
     }
@@ -488,16 +614,7 @@ int32_t red_format(
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         if(ret == 0)
         {
@@ -542,16 +659,7 @@ int32_t red_transact(
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         if(ret == 0)
         {
@@ -571,6 +679,7 @@ int32_t red_transact(
 
     The following events are available:
 
+    - #RED_TRANSACT_SYNC
     - #RED_TRANSACT_UMOUNT
     - #RED_TRANSACT_CREAT
     - #RED_TRANSACT_UNLINK
@@ -614,16 +723,7 @@ int32_t red_settransmask(
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         if(ret == 0)
         {
@@ -666,16 +766,7 @@ int32_t red_gettransmask(
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         if(ret == 0)
         {
@@ -716,16 +807,7 @@ int32_t red_statvfs(
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathSplit(pszVolume, &bVolNum, NULL);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
+        ret = RedPathVolumeLookup(pszVolume, NULL);
 
         if(ret == 0)
         {
@@ -784,7 +866,8 @@ int32_t red_statvfs(
     - #RED_EEXIST: Using #RED_O_CREAT and #RED_O_EXCL, and the indicated path
       already exists.
     - #RED_EINVAL: @p ulOpenMode is invalid; or @p pszPath is `NULL`; or the
-      volume containing the path is not mounted.
+      volume containing the path is not mounted; or #RED_O_CREAT is included in
+      @p ulOpenMode, and the path ends with dot or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_EISDIR: The path names a directory and @p ulOpenMode includes
       #RED_O_WRONLY or #RED_O_RDWR.
@@ -795,8 +878,8 @@ int32_t red_statvfs(
       available inode slots.
     - #RED_ENOENT: #RED_O_CREAT is not set and the named file does not exist; or
       #RED_O_CREAT is set and the parent directory does not exist; or the
-      volume does not exist; or the @p pszPath argument, after removing the
-      volume prefix, points to an empty string.
+      volume does not exist; or the @p pszPath argument points to an empty
+      string (and there is no volume with an empty path prefix).
     - #RED_ENOSPC: The file does not exist and #RED_O_CREAT was specified, but
       there is insufficient free space to expand the directory or to create the
       new file.
@@ -886,15 +969,18 @@ int32_t red_open(
             #red_errno is set appropriately.
 
     <b>Errno values</b>
-    - #RED_EBUSY: @p pszPath points to an inode with open handles and a link
-      count of one.
+    - #RED_EBUSY: @p pszPath names the root directory; or @p pszPath points to
+      an inode with open handles and a link count of one; or
+      #REDCONF_API_POSIX_CWD is true and @p pszPath points to the CWD of a task.
     - #RED_EINVAL: @p pszPath is `NULL`; or the volume containing the path is
-      not mounted.
+      not mounted; or #REDCONF_API_POSIX_CWD is true and the path ends with dot
+      or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_ENAMETOOLONG: The length of a component of @p pszPath is longer than
       #REDCONF_NAME_MAX.
     - #RED_ENOENT: The path does not name an existing file; or the @p pszPath
-      argument, after removing the volume prefix, points to an empty string.
+      argument points to an empty string (and there is no volume with an empty
+      path prefix).
     - #RED_ENOTDIR: A component of the path prefix is not a directory.
     - #RED_ENOTEMPTY: The path names a directory which is not empty.
     - #RED_ENOSPC: The file system does not have enough space to modify the
@@ -933,13 +1019,13 @@ int32_t red_unlink(
     <b>Errno values</b>
     - #RED_EEXIST: @p pszPath points to an existing file or directory.
     - #RED_EINVAL: @p pszPath is `NULL`; or the volume containing the path is
-      not mounted.
+      not mounted; or the path ends with dot or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_ENAMETOOLONG: The length of a component of @p pszPath is longer than
       #REDCONF_NAME_MAX.
     - #RED_ENOENT: A component of the path prefix does not name an existing
-      directory; or the @p pszPath argument, after removing the volume prefix,
-      points to an empty string.
+      directory; or the @p pszPath argument points to an empty string (and there
+      is no volume with an empty path prefix).
     - #RED_ENOSPC: The file system does not have enough space for the new
       directory or to extend the parent directory of the new directory.
     - #RED_ENOTDIR: A component of the path prefix is not a directory.
@@ -954,25 +1040,16 @@ int32_t red_mkdir(
     ret = PosixEnter();
     if(ret == 0)
     {
+        uint32_t    ulCwdInode;
         const char *pszLocalPath;
-        uint8_t     bVolNum;
 
-        ret = RedPathSplit(pszPath, &bVolNum, &pszLocalPath);
-
-      #if REDCONF_VOLUME_COUNT > 1U
-        if(ret == 0)
-        {
-            ret = RedCoreVolSetCurrent(bVolNum);
-        }
-      #endif
-
+        ret = PathStartingPoint(pszPath, NULL, &ulCwdInode, &pszLocalPath);
         if(ret == 0)
         {
             const char *pszName;
             uint32_t    ulPInode;
 
-            ret = RedPathToName(pszLocalPath, &ulPInode, &pszName);
-
+            ret = RedPathToName(ulCwdInode, pszLocalPath, -RED_EEXIST, &ulPInode, &pszName);
             if(ret == 0)
             {
                 uint32_t ulInode;
@@ -1020,15 +1097,18 @@ int32_t red_mkdir(
             #red_errno is set appropriately.
 
     <b>Errno values</b>
-    - #RED_EBUSY: @p pszPath points to a directory with open handles.
+    - #RED_EBUSY: @p pszPath names the root directory; or @p pszPath points to a
+      directory with open handles; or #REDCONF_API_POSIX_CWD is true and
+      @p pszPath points to the CWD of a task.
     - #RED_EINVAL: @p pszPath is `NULL`; or the volume containing the path is
-      not mounted.
+      not mounted; or #REDCONF_API_POSIX_CWD is true and the path ends with dot
+      or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_ENAMETOOLONG: The length of a component of @p pszPath is longer than
       #REDCONF_NAME_MAX.
     - #RED_ENOENT: The path does not name an existing directory; or the
-      @p pszPath argument, after removing the volume prefix, points to an empty
-      string.
+      @p pszPath argument points to an empty string (and there is no volume with
+      an empty path prefix).
     - #RED_ENOTDIR: A component of the path is not a directory.
     - #RED_ENOTEMPTY: The path names a directory which is not empty.
     - #RED_ENOSPC: The file system does not have enough space to modify the
@@ -1090,19 +1170,24 @@ int32_t red_rmdir(
             #red_errno is set appropriately.
 
     <b>Errno values</b>
-    - #RED_EBUSY: #REDCONF_RENAME_ATOMIC is true and @p pszNewPath points to an
-      inode with open handles and a link count of one.
+    - #RED_EBUSY: @p pszOldPath or @p pszNewPath names the root directory; or
+      #REDCONF_RENAME_ATOMIC is true and either a) @p pszNewPath
+      points to an inode with open handles and a link count of one or b)
+      #REDCONF_API_POSIX_CWD is true and the @p pszNewPath points to an inode
+      which is the CWD of at least one task.
     - #RED_EEXIST: #REDCONF_RENAME_ATOMIC is false and @p pszNewPath exists.
     - #RED_EINVAL: @p pszOldPath is `NULL`; or @p pszNewPath is `NULL`; or the
-      volume containing the path is not mounted.
+      volume containing the path is not mounted; or #REDCONF_API_POSIX_CWD is
+      true and either path ends with dot or dot-dot; or #REDCONF_API_POSIX_CWD
+      is false and @p pszNewPath ends with dot or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_EISDIR: The @p pszNewPath argument names a directory and the
       @p pszOldPath argument names a non-directory.
     - #RED_ENAMETOOLONG: The length of a component of either @p pszOldPath or
       @p pszNewPath is longer than #REDCONF_NAME_MAX.
     - #RED_ENOENT: The link named by @p pszOldPath does not name an existing
-      entry; or either @p pszOldPath or @p pszNewPath, after removing the volume
-      prefix, point to an empty string.
+      entry; or either @p pszOldPath or @p pszNewPath point to an empty string
+      (and there is no volume with an empty path prefix).
     - #RED_ENOTDIR: A component of either path prefix is not a directory; or
       @p pszOldPath names a directory and @p pszNewPath names a file.
     - #RED_ENOTEMPTY: The path named by @p pszNewPath is a directory which is
@@ -1124,43 +1209,36 @@ int32_t red_rename(
     ret = PosixEnter();
     if(ret == 0)
     {
-        const char *pszOldLocalPath;
         uint8_t     bOldVolNum;
+        uint32_t    ulOldCwdInode;
+        const char *pszOldLocalPath;
 
-        ret = RedPathSplit(pszOldPath, &bOldVolNum, &pszOldLocalPath);
-
+        ret = PathStartingPoint(pszOldPath, &bOldVolNum, &ulOldCwdInode, &pszOldLocalPath);
         if(ret == 0)
         {
-            const char *pszNewLocalPath;
             uint8_t     bNewVolNum;
+            uint32_t    ulNewCwdInode;
+            const char *pszNewLocalPath;
 
-            ret = RedPathSplit(pszNewPath, &bNewVolNum, &pszNewLocalPath);
+            ret = PathStartingPoint(pszNewPath, &bNewVolNum, &ulNewCwdInode, &pszNewLocalPath);
 
             if((ret == 0) && (bOldVolNum != bNewVolNum))
             {
                 ret = -RED_EXDEV;
             }
 
-          #if REDCONF_VOLUME_COUNT > 1U
-            if(ret == 0)
-            {
-                ret = RedCoreVolSetCurrent(bOldVolNum);
-            }
-          #endif
-
             if(ret == 0)
             {
                 const char *pszOldName;
                 uint32_t    ulOldPInode;
 
-                ret = RedPathToName(pszOldLocalPath, &ulOldPInode, &pszOldName);
-
+                ret = RedPathToName(ulOldCwdInode, pszOldLocalPath, -RED_EBUSY, &ulOldPInode, &pszOldName);
                 if(ret == 0)
                 {
                     const char *pszNewName;
                     uint32_t    ulNewPInode;
 
-                    ret = RedPathToName(pszNewLocalPath, &ulNewPInode, &pszNewName);
+                    ret = RedPathToName(ulNewCwdInode, pszNewLocalPath, -RED_EBUSY, &ulNewPInode, &pszNewName);
 
                   #if REDCONF_RENAME_ATOMIC == 1
                     if(ret == 0)
@@ -1221,16 +1299,17 @@ int32_t red_rename(
     <b>Errno values</b>
     - #RED_EEXIST: @p pszHardLink resolves to an existing file.
     - #RED_EINVAL: @p pszPath or @p pszHardLink is `NULL`; or the volume
-      containing the paths is not mounted.
+      containing the paths is not mounted; or #REDCONF_API_POSIX_CWD is true and
+      @p pszHardLink ends with dot or dot-dot.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_EMLINK: Creating the link would exceed the maximum link count of the
       inode named by @p pszPath.
     - #RED_ENAMETOOLONG: The length of a component of either @p pszPath or
       @p pszHardLink is longer than #REDCONF_NAME_MAX.
     - #RED_ENOENT: A component of either path prefix does not exist; or the file
-      named by @p pszPath does not exist; or either @p pszPath or
-      @p pszHardLink, after removing the volume prefix, point to an empty
-      string.
+      named by @p pszPath does not exist; or either @p pszPath or @p pszHardLink
+      point to an empty string (and there is no volume with an empty path
+      prefix).
     - #RED_ENOSPC: There is insufficient free space to expand the directory that
       would contain the link.
     - #RED_ENOTDIR: A component of either path prefix is not a directory.
@@ -1250,43 +1329,35 @@ int32_t red_link(
     ret = PosixEnter();
     if(ret == 0)
     {
-        const char *pszLocalPath;
         uint8_t     bVolNum;
+        uint32_t    ulCwdInode;
+        const char *pszLocalPath;
 
-        ret = RedPathSplit(pszPath, &bVolNum, &pszLocalPath);
-
+        ret = PathStartingPoint(pszPath, &bVolNum, &ulCwdInode, &pszLocalPath);
         if(ret == 0)
         {
-            const char *pszLinkLocalPath;
             uint8_t     bLinkVolNum;
+            uint32_t    ulLinkCwdInode;
+            const char *pszLinkLocalPath;
 
-            ret = RedPathSplit(pszHardLink, &bLinkVolNum, &pszLinkLocalPath);
+            ret = PathStartingPoint(pszHardLink, &bLinkVolNum, &ulLinkCwdInode, &pszLinkLocalPath);
 
             if((ret == 0) && (bVolNum != bLinkVolNum))
             {
                 ret = -RED_EXDEV;
             }
 
-          #if REDCONF_VOLUME_COUNT > 1U
-            if(ret == 0)
-            {
-                ret = RedCoreVolSetCurrent(bVolNum);
-            }
-          #endif
-
             if(ret == 0)
             {
                 uint32_t    ulInode;
 
-                ret = RedPathLookup(pszLocalPath, &ulInode);
-
+                ret = RedPathLookup(ulCwdInode, pszLocalPath, &ulInode);
                 if(ret == 0)
                 {
                     const char *pszLinkName;
                     uint32_t    ulLinkPInode;
 
-                    ret = RedPathToName(pszLinkLocalPath, &ulLinkPInode, &pszLinkName);
-
+                    ret = RedPathToName(ulLinkCwdInode, pszLinkLocalPath, -RED_EEXIST, &ulLinkPInode, &pszLinkName);
                     if(ret == 0)
                     {
                         ret = RedCoreLink(ulLinkPInode, pszLinkName, ulInode);
@@ -1912,7 +1983,8 @@ int32_t red_fstat(
       not mounted.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_ENOENT: A component of @p pszPath does not exist; or the @p pszPath
-      argument, after removing the volume prefix, points to an empty string.
+      argument points to an empty string (and there is no volume with an empty
+      path prefix).
     - #RED_ENOTDIR: A component of @p pszPath is a not a directory.
     - #RED_EMFILE: There are no available file descriptors.
     - #RED_EUSERS: Cannot become a file system user: too many users.
@@ -2119,6 +2191,331 @@ int32_t red_closedir(
 #endif /* REDCONF_API_POSIX_READDIR */
 
 
+#if REDCONF_API_POSIX_CWD == 1
+/** @brief Change the current working directory (CWD).
+
+    The default CWD, if it has never been set since the file system was
+    initialized, is the root directory of volume zero.  If the CWD is on a
+    volume that is unmounted, it resets to the root directory of that volume.
+
+    @param pszPath  The path to the directory which will become the current
+                    working directory.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EINVAL: @p pszPath is `NULL`; or the volume containing the path is
+      not mounted.
+    - #RED_EIO: A disk I/O error occurred.
+    - #RED_ENAMETOOLONG: The length of a component of @p pszPath is longer than
+      #REDCONF_NAME_MAX.
+    - #RED_ENOENT: A component of @p pszPath does not name an existing
+      directory; or the volume does not exist; or the @p pszPath argument
+      points to an empty string (and there is no volume with an empty path
+      prefix).
+    - #RED_ENOTDIR: A component of @p pszPath does not name a directory.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_chdir(
+    const char *pszPath)
+{
+    REDSTATUS   ret;
+
+    ret = PosixEnter();
+    if(ret == 0)
+    {
+        uint8_t     bVolNum;
+        uint32_t    ulCwdInode;
+        const char *pszLocalPath;
+
+        ret = PathStartingPoint(pszPath, &bVolNum, &ulCwdInode, &pszLocalPath);
+        if(ret == 0)
+        {
+            uint32_t ulInode;
+
+            /*  Resolve the new CWD.
+            */
+            ret = RedPathLookup(ulCwdInode, pszLocalPath, &ulInode);
+            if(ret == 0)
+            {
+                /*  The CWD must be a directory.
+                */
+                if(ulInode != INODE_ROOTDIR)
+                {
+                    REDSTAT sb;
+
+                    ret = RedCoreStat(ulInode, &sb);
+                    if((ret == 0) && !RED_S_ISDIR(sb.st_mode))
+                    {
+                        ret = -RED_ENOTDIR;
+                    }
+                }
+
+                /*  Update the CWD.
+                */
+                if(ret == 0)
+                {
+                    WORKDIR *pCwd = CwdGet();
+
+                    if(pCwd == NULL)
+                    {
+                        /*  This code should be unreachable because PosixEnter()
+                            never returns zero unless the task is registered,
+                            and every registered task has a CWD.
+                        */
+                        REDERROR();
+                        ret = -RED_EFUBAR;
+                    }
+                    else
+                    {
+                        pCwd->bVolNum = bVolNum;
+                        pCwd->ulInode = ulInode;
+                    }
+                }
+            }
+        }
+
+        PosixLeave();
+    }
+
+    return PosixReturn(ret);
+}
+
+
+/** @brief Get the path of the current working directory (CWD).
+
+    The default CWD, if it has never been set since the file system was
+    initialized, is the root directory of volume zero.  If the CWD is on a
+    volume that is unmounted, it resets to the root directory of that volume.
+
+    @note Reliance Edge does not have a maximum path length; paths, including
+          the CWD path, can be arbitrarily long.  Thus, no buffer is guaranteed
+          to be large enough to store the CWD.  If it is important that calls to
+          this function succeed, you need to analyze your application to
+          determine the maximum length of the CWD path.  Alternatively, if
+          dynamic memory allocation is used, this function can be called in a
+          loop, with the buffer size increasing if the function fails with a
+          RED_ERANGE error; repeat until the call succeeds.
+
+    @param pszBuffer    The buffer to populate with the CWD.
+    @param ulBufferSize The size in bytes of @p pszBuffer.
+
+    @return On success, @p pszBuffer is returned.  On error, `NULL` is returned
+            and #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EINVAL: @p pszBuffer is `NULL`; or @p ulBufferSize is zero.
+    - #RED_EIO: A disk I/O error occurred.
+    - #RED_ERANGE: @p ulBufferSize is greater than zero but too small for the
+      CWD path string.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+char *red_getcwd(
+    char       *pszBuffer,
+    uint32_t    ulBufferSize)
+{
+    REDSTATUS   ret;
+    char       *pszReturn;
+
+    if((pszBuffer == NULL) || (ulBufferSize == 0U))
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        ret = PosixEnter();
+        if(ret == 0)
+        {
+            const WORKDIR *pCwd = CwdGet();
+
+            if(pCwd == NULL)
+            {
+                /*  This code should be unreachable because PosixEnter() never
+                    returns zero unless the task is registered, and every
+                    registered task has a CWD.
+                */
+                REDERROR();
+                ret = -RED_EFUBAR;
+            }
+            else
+            {
+                /*  Implementation notes...  We store the CWD as an inode/volume
+                    rather than as a string, which has several advantages: it
+                    saves memory, avoids the need to impose a maximum path
+                    length, makes relative path operations faster since the CWD
+                    does not need to be resolved every time, and makes it easy
+                    to allow renaming and disallow deleting the CWD.  The
+                    disadvantage is that getcwd() (this function) is more
+                    complicated, because the CWD buffer must be constructed.
+                    This construction is possible since each directory inode
+                    stores the inode number of its parent directory (only one
+                    parent: no hard links allowed for directories), so for the
+                    CWD inode we can step up to its parent, then scan that
+                    parent directory for the name which corresponds to the
+                    inode. Iteratively we can repeat this process to construct
+                    the CWD in reverse, starting with the deepest subdirectory
+                    and working up toward the root directory.  This is
+                    potentially a slow operation if the directories are large
+                    and thus slow to scan.
+                */
+
+              #if REDCONF_VOLUME_COUNT > 1U
+                ret = RedCoreVolSetCurrent(pCwd->bVolNum);
+                if(ret == 0)
+              #endif
+                {
+                    uint32_t ulInode = pCwd->ulInode;
+                    uint32_t ulPInode;
+                    uint32_t ulCwdLen; /* Length includes terminating NUL */
+
+                    pszBuffer[0U] = '\0';
+                    ulCwdLen = 1U;
+
+                    /*  The CWD for an unmounted volume is always the root
+                        directory -- so in that case, the loop below is not
+                        entered, and we end up populating the buffer with just
+                        the volume path prefix and a path separator, which is
+                        exactly as it should be.
+                    */
+                    REDASSERT(gpRedVolume->fMounted || (ulInode == INODE_ROOTDIR));
+
+                    /*  Work our way up the path, converting the inode numbers
+                        to names, building the CWD in reverse, until we reach
+                        the root directory.
+                    */
+                    while((ret == 0) && (ulInode != INODE_ROOTDIR))
+                    {
+                        /*  The name buffer is static in case REDCONF_NAME_MAX
+                            is too big to fit on the stack; we're single-
+                            threaded so this is safe.  The variable name
+                            includes "GetCwd" since that might be preserved in
+                            the linker's map file, making it easier to determine
+                            who is allocating this memory.
+                        */
+                        static char szGetCwdName[REDCONF_NAME_MAX + 1U];
+                        uint32_t    ulDirPos = 0U;
+
+                        /*  Scan the parent directory to convert this inode into
+                            a name.  Hard linking is prohibited for directories
+                            so the inode will have only one parent inode and one
+                            name.
+                        */
+                        ret = RedCoreDirParent(ulInode, &ulPInode);
+                        while(ret == 0)
+                        {
+                            uint32_t ulThisInode;
+
+                            ret = RedCoreDirRead(ulPInode, &ulDirPos, szGetCwdName, &ulThisInode);
+                            if((ret == 0) && (ulThisInode == ulInode))
+                            {
+                                /*  Found the matching name.
+                                */
+                                break;
+                            }
+
+                            /*  If we get to the end of the parent directory
+                                without finding the inode of the child
+                                directory, something is wrong -- probably file
+                                system corruption.
+                            */
+                            if(ret == -RED_ENOENT)
+                            {
+                                REDERROR();
+                                ret = -RED_EFUBAR;
+                            }
+                        }
+
+                        /*  Shift the contents of pszBuffer to the right and
+                            copy in the next name.  For example, if the CWD is
+                            "a/b/c", the contents of pszBuffer will be "", then
+                            "c", then "b/c", then "a/b/c".
+                        */
+                        if(ret == 0)
+                        {
+                            /*  Skip the path separator for the first name so
+                                that we end up with "a/b/c" instead of "a/b/c/".
+                            */
+                            bool fPathSeparator = (ulInode != pCwd->ulInode);
+                            uint32_t ulNameLen = RedNameLen(szGetCwdName);
+                            uint32_t ulNewLen = ulNameLen;
+
+                            if(fPathSeparator)
+                            {
+                                ulNewLen++; /* For path separator */
+                            }
+
+                            if((ulCwdLen + ulNewLen) > ulBufferSize)
+                            {
+                                /*  The CWD buffer provided by the caller is too
+                                    small.
+                                */
+                                ret = -RED_ERANGE;
+                            }
+                            else
+                            {
+                                RedMemMove(&pszBuffer[ulNewLen], pszBuffer, ulCwdLen);
+                                RedMemCpy(pszBuffer, szGetCwdName, ulNameLen);
+                                if(fPathSeparator)
+                                {
+                                    pszBuffer[ulNameLen] = REDCONF_PATH_SEPARATOR;
+                                }
+
+                                ulCwdLen += ulNewLen;
+                            }
+                        }
+
+                        /*  Move up the path to the parent directory.
+                        */
+                        if(ret == 0)
+                        {
+                            ulInode = ulPInode;
+                        }
+                    }
+
+                    /*  Copy in the volume path prefix, followed by a leading
+                        slash for the root directory.
+                    */
+                    if(ret == 0)
+                    {
+                        uint32_t ulVolPrefixLen = RedStrLen(gpRedVolConf->pszPathPrefix);
+
+                        if((ulCwdLen + ulVolPrefixLen + 1U) > ulBufferSize)
+                        {
+                            /*  The CWD buffer provided by the caller is too
+                                small.
+                            */
+                            ret = -RED_ERANGE;
+                        }
+                        else
+                        {
+                            RedMemMove(&pszBuffer[ulVolPrefixLen + 1U], pszBuffer, ulCwdLen);
+                            RedMemCpy(pszBuffer, gpRedVolConf->pszPathPrefix, ulVolPrefixLen);
+                            pszBuffer[ulVolPrefixLen] = REDCONF_PATH_SEPARATOR;
+                        }
+                    }
+                }
+            }
+
+            PosixLeave();
+        }
+    }
+
+    if(ret == 0)
+    {
+        pszReturn = pszBuffer;
+    }
+    else
+    {
+        pszReturn = NULL;
+        red_errno = -ret;
+    }
+
+    return pszReturn;
+}
+#endif /* REDCONF_API_POSIX_CWD */
+
+
 /** @brief Pointer to where the last file system error (errno) is stored.
 
     This function is intended to be used via the #red_errno macro, or a similar
@@ -2251,17 +2648,23 @@ REDSTATUS *red_errnoptr(void)
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval -RED_EBUSY          @p pszPath points to an inode with open handles
-                                and a link count of one.
+    @retval -RED_EBUSY          @p pszPath names the root directory; or
+                                @p pszPath points to an inode with open handles
+                                and a link count of one; or
+                                #REDCONF_API_POSIX_CWD is true and @p pszPath
+                                points to an inode which is the CWD of at least
+                                one task.
     @retval -RED_EINVAL         @p pszPath is `NULL`; or the volume containing
-                                the path is not mounted.
+                                the path is not mounted; or
+                                #REDCONF_API_POSIX_CWD is true and the path ends
+                                with dot or dot-dot.
     @retval -RED_EIO            A disk I/O error occurred.
     @retval -RED_EISDIR         @p type is ::FTYPE_FILE and the path names a
                                 directory.
     @retval -RED_ENAMETOOLONG   @p pszName is too long.
     @retval -RED_ENOENT         The path does not name an existing file; or
-                                @p pszPath, after removing the volume prefix,
-                                points to an empty string.
+                                @p pszPath, after removing the volume prefix (if
+                                present), points to an empty string.
     @retval -RED_ENOTDIR        @p type is ::FTYPE_DIR and the path does not
                                 name a directory.
     @retval -RED_ENOTEMPTY      @p pszPath is a directory which is not empty.
@@ -2273,26 +2676,17 @@ static REDSTATUS UnlinkSub(
     const char *pszPath,
     FTYPE       type)
 {
-    uint8_t     bVolNum;
+    uint32_t    ulCwdInode;
     const char *pszLocalPath;
     REDSTATUS   ret;
 
-    ret = RedPathSplit(pszPath, &bVolNum, &pszLocalPath);
-
-  #if REDCONF_VOLUME_COUNT > 1U
-    if(ret == 0)
-    {
-        ret = RedCoreVolSetCurrent(bVolNum);
-    }
-  #endif
-
+    ret = PathStartingPoint(pszPath, NULL, &ulCwdInode, &pszLocalPath);
     if(ret == 0)
     {
         const char *pszName;
         uint32_t    ulPInode;
 
-        ret = RedPathToName(pszLocalPath, &ulPInode, &pszName);
-
+        ret = RedPathToName(ulCwdInode, pszLocalPath, -RED_EBUSY, &ulPInode, &pszName);
         if(ret == 0)
         {
             uint32_t ulInode;
@@ -2328,6 +2722,102 @@ static REDSTATUS UnlinkSub(
     return ret;
 }
 #endif /* (REDCONF_API_POSIX_UNLINK == 1) || (REDCONF_API_POSIX_RMDIR == 1) */
+
+
+/** @brief Find the starting point for a path.
+
+    In other words, find the volume number and directory inode from which the
+    parsing of this path should start.
+
+    The volume number will be set as the current volume.
+
+    @param pszPath          The path to examine.
+    @param pbVolNum         On successful return, if non-NULL, populated with
+                            the volume number for the path.  This volume number
+                            is set as the current volume.
+    @param pulCwdInode      On successful return, populated with the directory
+                            inode that the local path starts in: this is either
+                            the root directory or the CWD.
+    @param ppszLocalPath    On successful return, populated with the path
+                            stripped of volume path prefixing, if there was any.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL @p pszPath or @p pulCwdInode or @p ppszLocalPath is
+                        `NULL`.
+    @retval -RED_ENOENT @p pszPath could not be matched to any volume and there
+                        is no CWD.
+*/
+static REDSTATUS PathStartingPoint(
+    const char     *pszPath,
+    uint8_t        *pbVolNum,
+    uint32_t       *pulCwdInode,
+    const char    **ppszLocalPath)
+{
+    REDSTATUS       ret;
+
+    if((pszPath == NULL) || (pulCwdInode == NULL) || (ppszLocalPath == NULL))
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        uint8_t bVolNum;
+
+        ret = RedPathVolumePrefixLookup(pszPath, &bVolNum);
+        if(ret == 0)
+        {
+            *pulCwdInode = INODE_ROOTDIR;
+            *ppszLocalPath = &pszPath[RedStrLen(gpRedVolConf->pszPathPrefix)];
+        }
+
+      #if REDCONF_API_POSIX_CWD == 1
+        /*  If the path was _not_ an absolute path, use the CWD.  We consider
+            the path to be absolute if it exactly matched a non-zero length
+            volume path prefix; or if it started with a path separator.
+
+            Don't use the CWD if the path was an empty string -- POSIX considers
+            empty paths to be an error.
+        */
+        if(    ((ret == -RED_ENOENT) || ((ret == 0) && (gpRedVolConf->pszPathPrefix[0U] == '\0')))
+            && (pszPath[0U] != REDCONF_PATH_SEPARATOR)
+            && (pszPath[0U] != '\0'))
+        {
+            const WORKDIR *pCwd = CwdGet();
+
+            if(pCwd == NULL)
+            {
+                /*  This should be unreachable unless there is a coding error
+                    and this function is being called without first calling
+                    PosixEnter().
+                */
+                REDERROR();
+                ret = -RED_EFUBAR;
+            }
+            else
+            {
+                bVolNum = pCwd->bVolNum;
+                *pulCwdInode = pCwd->ulInode;
+                *ppszLocalPath = pszPath;
+
+              #if REDCONF_VOLUME_COUNT > 1U
+                ret = RedCoreVolSetCurrent(bVolNum);
+              #else
+                ret = 0;
+              #endif
+            }
+        }
+      #endif
+
+        if(pbVolNum != NULL)
+        {
+            *pbVolNum = bVolNum;
+        }
+    }
+
+    return ret;
+}
 
 
 /** @brief Get a file descriptor for a path.
@@ -2376,11 +2866,11 @@ static REDSTATUS FildesOpen(
     int32_t    *piFildes)
 {
     uint8_t     bVolNum;
+    uint32_t    ulCwdInode;
     const char *pszLocalPath;
     REDSTATUS   ret;
 
-    ret = RedPathSplit(pszPath, &bVolNum, &pszLocalPath);
-
+    ret = PathStartingPoint(pszPath, &bVolNum, &ulCwdInode, &pszLocalPath);
     if(ret == 0)
     {
         if(piFildes == NULL)
@@ -2388,7 +2878,7 @@ static REDSTATUS FildesOpen(
             ret = -RED_EINVAL;
         }
       #if REDCONF_READ_ONLY == 0
-        else if(gaRedVolume[bVolNum].fReadOnly && (ulOpenMode != RED_O_RDONLY))
+        else if(gpRedVolume->fReadOnly && (ulOpenMode != RED_O_RDONLY))
         {
             ret = -RED_EROFS;
         }
@@ -2421,44 +2911,38 @@ static REDSTATUS FildesOpen(
                 uint16_t    uMode = 0U;
                 uint32_t    ulInode = 0U;       /* Init'd to quiet warnings. */
 
-              #if REDCONF_VOLUME_COUNT > 1U
-                ret = RedCoreVolSetCurrent(bVolNum);
-                if(ret == 0)
-              #endif
+              #if REDCONF_READ_ONLY == 0
+                if((ulOpenMode & RED_O_CREAT) != 0U)
                 {
-                  #if REDCONF_READ_ONLY == 0
-                    if((ulOpenMode & RED_O_CREAT) != 0U)
-                    {
-                        uint32_t    ulPInode;
-                        const char *pszName;
+                    uint32_t    ulPInode;
+                    const char *pszName;
 
-                        ret = RedPathToName(pszLocalPath, &ulPInode, &pszName);
+                    ret = RedPathToName(ulCwdInode, pszLocalPath, -RED_EISDIR, &ulPInode, &pszName);
+                    if(ret == 0)
+                    {
+                        ret = RedCoreCreate(ulPInode, pszName, false, &ulInode);
                         if(ret == 0)
                         {
-                            ret = RedCoreCreate(ulPInode, pszName, false, &ulInode);
-                            if(ret == 0)
-                            {
-                                fCreated = true;
-                            }
-                            else if((ret == -RED_EEXIST) && ((ulOpenMode & RED_O_EXCL) == 0U))
-                            {
-                                /*  If the path already exists and that's OK,
-                                    lookup its inode number.
-                                */
-                                ret = RedCoreLookup(ulPInode, pszName, &ulInode);
-                            }
-                            else
-                            {
-                                /*  No action, just propagate the error.
-                                */
-                            }
+                            fCreated = true;
+                        }
+                        else if((ret == -RED_EEXIST) && ((ulOpenMode & RED_O_EXCL) == 0U))
+                        {
+                            /*  If the path already exists and that's OK,
+                                lookup its inode number.
+                            */
+                            ret = RedCoreLookup(ulPInode, pszName, &ulInode);
+                        }
+                        else
+                        {
+                            /*  No action, just propagate the error.
+                            */
                         }
                     }
-                    else
-                  #endif
-                    {
-                        ret = RedPathLookup(pszLocalPath, &ulInode);
-                    }
+                }
+                else
+              #endif
+                {
+                    ret = RedPathLookup(ulCwdInode, pszLocalPath, &ulInode);
                 }
 
                 /*  If we created the inode, none of the below stuff is
@@ -2584,8 +3068,11 @@ static REDSTATUS FildesClose(
 
     /*  No core event for close, so this transaction flag needs to be
         implemented here.
+
+        If the volume is read-only, skip the close transaction.  This avoids
+        -RED_EROFS errors when closing files on a read-only volume.
     */
-    if(ret == 0)
+    if((ret == 0) && !gpRedVolume->fReadOnly)
     {
         uint32_t    ulTransMask;
 
@@ -2928,19 +3415,23 @@ static REDSTATUS ModeTypeCheck(
     result in the deletion of the inode) and open handles, it cannot be deleted
     since this would break open handles.
 
+    If an inode is the current working directory, it cannot be deleted since
+    this would break the CWD.
+
     @param ulInode  The inode whose name is to be unlinked.
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
     @retval -RED_EBADF  @p ulInode is not a valid inode.
-    @retval -RED_EBUSY  The inode has a link count of one and open handles.
+    @retval -RED_EBUSY  The inode has a link count of one and open handles; or
+                        #REDCONF_API_POSIX_CWD is true and the inode is the CWD
+                        of at least one task.
     @retval -RED_EIO    A disk I/O error occurred.
 */
 static REDSTATUS InodeUnlinkCheck(
     uint32_t    ulInode)
 {
-    uint16_t    uHandleIdx;
     REDSTATUS   ret;
 
   #if REDCONF_API_POSIX_LINK == 0
@@ -2957,6 +3448,8 @@ static REDSTATUS InodeUnlinkCheck(
     if((ret == 0) && (InodeStat.st_nlink == 1U))
   #endif
     {
+        uint16_t uHandleIdx;
+
         for(uHandleIdx = 0U; uHandleIdx < REDCONF_HANDLE_COUNT; uHandleIdx++)
         {
             if((gaHandle[uHandleIdx].ulInode == ulInode) && (gaHandle[uHandleIdx].bVolNum == gbRedVolNum))
@@ -2965,6 +3458,32 @@ static REDSTATUS InodeUnlinkCheck(
                 break;
             }
         }
+
+      #if REDCONF_API_POSIX_CWD == 1
+        /*  The CWD for any task is considered referenced, and cannot be
+            deleted.
+        */
+        if(ret == 0)
+        {
+          #if REDCONF_TASK_COUNT > 1U
+            uint32_t ulTaskIdx;
+
+            for(ulTaskIdx = 0U; ulTaskIdx < REDCONF_TASK_COUNT; ulTaskIdx++)
+            {
+                if((gaTask[ulTaskIdx].cwd.ulInode == ulInode) && (gaTask[ulTaskIdx].cwd.bVolNum == gbRedVolNum))
+                {
+                    ret = -RED_EBUSY;
+                    break;
+                }
+            }
+          #else
+            if((gCwd.ulInode == ulInode) && (gCwd.bVolNum == gbRedVolNum))
+            {
+                ret = -RED_EBUSY;
+            }
+          #endif
+        }
+      #endif
     }
 
     return ret;
@@ -3048,6 +3567,96 @@ static REDSTATUS TaskRegister(
     return ret;
 }
 #endif /* REDCONF_TASK_COUNT > 1U */
+
+
+#if REDCONF_API_POSIX_CWD == 1
+/** @brief Get the current working directory (CWD) for the calling task.
+
+    @return The pointer to the current working directory for the calling task.
+*/
+static WORKDIR *CwdGet(void)
+{
+  #if REDCONF_TASK_COUNT == 1U
+    /*  Return the one and only CWD.
+    */
+    return &gCwd;
+  #else
+    uint32_t    ulIdx;
+    uint32_t    ulTaskId = RedOsTaskId();
+    WORKDIR    *pCwd = NULL;
+
+    REDASSERT(ulTaskId != 0U);
+
+    for(ulIdx = 0U; ulIdx < REDCONF_TASK_COUNT; ulIdx++)
+    {
+        if(gaTask[ulIdx].ulTaskId == ulTaskId)
+        {
+            pCwd = &gaTask[ulIdx].cwd;
+            break;
+        }
+    }
+
+    /*  The task should be registered when this function is called, so its CWD
+        should be found.
+    */
+    REDASSERT(pCwd != NULL);
+
+    return pCwd;
+  #endif
+}
+
+
+/** @brief Reset all current working directories (CWD) on the given volume to
+           the root directory.
+
+    @param bVolNum  Reset CWDs residing on this volume.
+*/
+static void CwdResetVol(
+    uint8_t     bVolNum)
+{
+    REDASSERT(bVolNum < REDCONF_VOLUME_COUNT);
+
+  #if REDCONF_TASK_COUNT == 1U
+    if(bVolNum == gCwd.bVolNum)
+    {
+        gCwd.ulInode = INODE_ROOTDIR;
+    }
+  #else
+    {
+        uint32_t    ulIdx;
+
+        for(ulIdx = 0U; ulIdx < REDCONF_TASK_COUNT; ulIdx++)
+        {
+            if(bVolNum == gaTask[ulIdx].cwd.bVolNum)
+            {
+                gaTask[ulIdx].cwd.ulInode = INODE_ROOTDIR;
+            }
+        }
+    }
+  #endif
+}
+
+
+/** @brief Reset all current working directories (CWD) to the default.
+*/
+static void CwdResetAll(void)
+{
+  #if REDCONF_TASK_COUNT == 1U
+    gCwd.bVolNum = 0U;
+    gCwd.ulInode = INODE_ROOTDIR;
+  #else
+    {
+        uint32_t    ulIdx;
+
+        for(ulIdx = 0U; ulIdx < REDCONF_TASK_COUNT; ulIdx++)
+        {
+            gaTask[ulIdx].cwd.bVolNum = 0U;
+            gaTask[ulIdx].cwd.ulInode = INODE_ROOTDIR;
+        }
+    }
+  #endif
+}
+#endif /* REDCONF_API_POSIX_CWD == 1 */
 
 
 /** @brief Convert an error value into a simple 0 or -1 return.

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -126,6 +126,16 @@ REDSTATUS RedDirEntryCreate(
         else if(ulNameLen > REDCONF_NAME_MAX)
         {
             ret = -RED_ENAMETOOLONG;
+        }
+        else if(    ((ulNameLen == 1U) && (pszName[0U] == '.'))
+                 || ((ulNameLen == 2U) && (pszName[0U] == '.') && (pszName[1U] == '.')))
+        {
+            /*  Disallow creating directory entries named "." or "..".  Even if
+                support for dot/dot-dot parsing is disabled, allowing those
+                names to exist and point at arbitrary inodes would be too
+                confusing.
+            */
+            ret = -RED_EINVAL;
         }
         else
         {
@@ -454,7 +464,7 @@ REDSTATUS RedDirEntryLookup(
 }
 
 
-#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_CHECKER == 1)
+#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1) || (REDCONF_CHECKER == 1)
 /** @brief Read the next entry from a directory, given a starting index.
 
     @param pPInode  A pointer to the cached inode structure of the directory to
@@ -624,7 +634,7 @@ REDSTATUS RedDirEntryRename(
     const char *pszDstName,
     CINODE     *pDstInode)
 {
-    REDSTATUS   ret;
+    REDSTATUS   ret = 0;
 
     if(    !CINODE_IS_DIRTY(pSrcPInode)
         || (pszSrcName == NULL)
@@ -641,12 +651,26 @@ REDSTATUS RedDirEntryRename(
     }
     else
     {
+        uint32_t ulDstNameLen = RedNameLen(pszDstName);
         uint32_t ulDstIdx = 0U; /* Init'd to quiet warnings. */
-        uint32_t ulSrcIdx;
+        uint32_t ulSrcIdx = 0U; /* Init'd to quiet warnings. */
+
+        /*  Disallow renaming anything to "." or "..".  Even if support for
+            dot/dot-dot parsing is disabled, allowing those names to exist and
+            point at arbitrary inodes would be too confusing.
+        */
+        if(    ((ulDstNameLen == 1U) && (pszDstName[0U] == '.'))
+            || ((ulDstNameLen == 2U) && (pszDstName[0U] == '.') && (pszDstName[1U] == '.')))
+        {
+            ret = -RED_EINVAL;
+        }
 
         /*  Look up the source and destination names.
         */
-        ret = RedDirEntryLookup(pSrcPInode, pszSrcName, &ulSrcIdx, &pSrcInode->ulInode);
+        if(ret == 0)
+        {
+            ret = RedDirEntryLookup(pSrcPInode, pszSrcName, &ulSrcIdx, &pSrcInode->ulInode);
+        }
 
         if(ret == 0)
         {
@@ -716,7 +740,7 @@ REDSTATUS RedDirEntryRename(
 
             if(ret == 0)
             {
-                ret = DirEntryWrite(pDstPInode, ulDstIdx, pSrcInode->ulInode, pszDstName, RedNameLen(pszDstName));
+                ret = DirEntryWrite(pDstPInode, ulDstIdx, pSrcInode->ulInode, pszDstName, ulDstNameLen);
             }
 
             if(ret == 0)
@@ -735,7 +759,7 @@ REDSTATUS RedDirEntryRename(
                   #if REDCONF_RENAME_ATOMIC == 1
                     if(pDstInode->ulInode != INODE_INVALID)
                     {
-                        ret2 = DirEntryWrite(pDstPInode, ulDstIdx, pDstInode->ulInode, pszDstName, RedNameLen(pszDstName));
+                        ret2 = DirEntryWrite(pDstPInode, ulDstIdx, pDstInode->ulInode, pszDstName, ulDstNameLen);
                     }
                     else
                   #endif

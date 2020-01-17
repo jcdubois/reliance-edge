@@ -69,7 +69,7 @@
              <x>0</x>
              <y>0</y>
              <width>350</width>
-             <height>681</height>
+             <height>790</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_11">
@@ -101,6 +101,53 @@
                  </property>
                  <property name="text">
                   <string>Enable readonly configuration</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="gbAutomaticDiscards">
+              <property name="layoutDirection">
+               <enum>Qt::LeftToRight</enum>
+              </property>
+              <property name="title">
+               <string>Automatic Discards</string>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_23">
+               <item>
+                <widget class="QCheckBox" name="cbAutomaticDiscards">
+                 <property name="layoutDirection">
+                  <enum>Qt::LeftToRight</enum>
+                 </property>
+                 <property name="text">
+                  <string>Enable automatic discards</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="WarningBtn" name="wbtnAutomaticDiscards" native="true">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Fixed" vsizetype="Ignored">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>18</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <property name="layoutDirection">
+                  <enum>Qt::LeftToRight</enum>
                  </property>
                 </widget>
                </item>
@@ -293,6 +340,42 @@
                         </item>
                        </layout>
                       </item>
+                      <item>
+                       <layout class="QHBoxLayout" name="horizontalLayout_8">
+                        <item>
+                         <widget class="QCheckBox" name="cbPosixFstrim">
+                          <property name="toolTip">
+                           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means:&lt;/span&gt; This setting determines whether the red_fstrim() API will be available.  Enabling this setting implicitly enables the block device discard mechanism.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance:&lt;/span&gt; If you plan to delete directories in your application, enable this setting; otherwise, disable it to reduce code size. red_rmdir() shares most of its code with red_unlink(), so the difference in code size is small unless both APIs are enabled or disabled.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                          </property>
+                          <property name="text">
+                           <string>fstrim</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item>
+                         <widget class="WarningBtn" name="wbtnFstrim" native="true">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Fixed" vsizetype="Ignored">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="minimumSize">
+                           <size>
+                            <width>0</width>
+                            <height>0</height>
+                           </size>
+                          </property>
+                          <property name="maximumSize">
+                           <size>
+                            <width>18</width>
+                            <height>16777215</height>
+                           </size>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
+                      </item>
                      </layout>
                     </item>
                     <item>
@@ -371,27 +454,25 @@
                            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means: &lt;/span&gt;This setting determines whether the red_opendir(), red_readdir(), red_rewinddir(), and red_closedir() APIs will be available.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance: &lt;/span&gt;If you plan to enumerate the contents of a directory in your application, enable this setting; otherwise, disable it to reduce code size and reduce the amount of memory needed for each file system handle (see Handle Count). red_readdir() is useful for discovering the contents of a directory, and for writing code which parses directories recursively, but most embedded applications will not need it.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                           </property>
                           <property name="text">
-                           <string>Directory operations</string>
+                           <string>readdir</string>
                           </property>
                          </widget>
                         </item>
                        </layout>
                       </item>
                       <item>
-                       <spacer name="verticalSpacer">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeType">
-                         <enum>QSizePolicy::Fixed</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>10</width>
-                          <height>17</height>
-                         </size>
-                        </property>
-                       </spacer>
+                       <layout class="QHBoxLayout" name="horizontalLayout_22">
+                        <item>
+                         <widget class="QCheckBox" name="cbPosixCwd">
+                          <property name="toolTip">
+                           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means: &lt;/span&gt;This setting determines whether the name based APIs support relative paths based on the current working directory and the . and .. directory entries.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance: &lt;/span&gt;If you plan to use relative paths in your application, enable this setting; otherwise, disable it to reduce code size.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                          </property>
+                          <property name="text">
+                           <string>relative paths</string>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </item>
                      </layout>
                     </item>
@@ -939,8 +1020,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>364</width>
-             <height>504</height>
+             <width>366</width>
+             <height>489</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_14">
@@ -964,6 +1045,14 @@
                  </item>
                  <item>
                   <widget class="QComboBox" name="cmbBlockSize">
+                   <property name="currentIndex">
+                    <number>2</number>
+                   </property>
+                   <item>
+                    <property name="text">
+                     <string>128</string>
+                    </property>
+                   </item>
                    <item>
                     <property name="text">
                      <string>256</string>
@@ -1147,7 +1236,7 @@
                      <item>
                       <widget class="QLabel" name="label_17">
                        <property name="toolTip">
-                        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means:&lt;/span&gt; This is the sector size of the storage medium underlying the volume being configured. The sector size is the unit for reads and writes to the storage medium; while the file system allocates in terms of blocks, the block numbers and counts are converted to sector numbers and counts before being passed into the block device service.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance:&lt;/span&gt; The correct value here is the sector size of the storage medium. For example, if the storage medium underlying the volume has 512 byte sectors, this should be set to 512. The most common value here will be 512. If implementing a RAM disk, the sector size can be set to 1 so that the sector numbers and counts serve as byte offsets and lengths.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means:&lt;/span&gt; This is the sector size of the storage medium underlying the volume being configured. The sector size is the unit for reads and writes to the storage medium; while the file system allocates in terms of blocks, the block numbers and counts are converted to sector numbers and counts before being passed into the block device service.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance:&lt;/span&gt; The correct value here is the sector size of the storage medium. For example, if the storage medium underlying the volume has 512 byte sectors, this should be set to 512. The most common value here will be 512.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                        </property>
                        <property name="text">
                         <string>Sector size:</string>
@@ -1156,6 +1245,14 @@
                      </item>
                      <item>
                       <widget class="QComboBox" name="cmbSectorSize">
+                       <property name="currentIndex">
+                        <number>2</number>
+                       </property>
+                       <item>
+                        <property name="text">
+                         <string>128</string>
+                        </property>
+                       </item>
                        <item>
                         <property name="text">
                          <string>256</string>
@@ -1380,6 +1477,141 @@
                     </layout>
                    </item>
                    <item>
+                    <layout class="QVBoxLayout" name="vlayVolOff">
+                     <property name="spacing">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <layout class="QHBoxLayout" name="horizontalLayout_12b">
+                       <item>
+                        <widget class="QLabel" name="label_9b">
+                         <property name="toolTip">
+                          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;What it means:&lt;/span&gt; This is the number of sectors before the partition that contains the Reliance Edge volume. More generically, it is the number of sectors on the block device that should be skipped over when doing I/O to this volume.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Guidance:&lt;/span&gt; This value, in combination with the &lt;span style=&quot; font-weight:600;&quot;&gt;Sector Count&lt;/span&gt;, can be used to place multiple file system volumes on the same block device, in manually configured partitions. It can also be used to skip over sectors that are being used for other purposes, such as storing boot code.&lt;/p&gt;&lt;p&gt;This value must be zero for volumes using the RAM disk implementations supplied as part of Reliance Edge.&lt;/p&gt;&lt;p&gt;For more information, see the &amp;quot;Product Configuration&amp;quot; chapter of the Reliance Edge Developer's Guide. &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                         </property>
+                         <property name="text">
+                          <string>Volume offset:</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QSpinBox" name="sbVolOff">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                           <horstretch>1</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>100</width>
+                           <height>0</height>
+                          </size>
+                         </property>
+                         <property name="minimum">
+                          <number>0</number>
+                         </property>
+                         <property name="maximum">
+                          <number>2147483647</number>
+                         </property>
+                         <property name="value">
+                          <number>0</number>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="label_10b">
+                         <property name="text">
+                          <string>sectors</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="horizontalSpacer_5b">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>40</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                       <item>
+                        <widget class="WarningBtn" name="wbtnVolOff" native="true">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Fixed" vsizetype="Ignored">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>0</width>
+                           <height>0</height>
+                          </size>
+                         </property>
+                         <property name="maximumSize">
+                          <size>
+                           <width>18</width>
+                           <height>16777215</height>
+                          </size>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <layout class="QHBoxLayout" name="horizontalLayout_13b">
+                       <item>
+                        <spacer name="horizontalSpacer_8b">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeType">
+                          <enum>QSizePolicy::Fixed</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>10</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="label_11b">
+                         <property name="text">
+                          <string>=</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="labelVolOffBytes">
+                         <property name="text">
+                          <string>0</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="horizontalSpacer_7b">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>40</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                      </layout>
+                     </item>
+                    </layout>
+                   </item>
+                   <item>
                     <layout class="QHBoxLayout" name="hlayAtomicWrite">
                      <item>
                       <widget class="QLabel" name="label_20">
@@ -1462,6 +1694,9 @@
                      </item>
                      <item>
                       <widget class="QComboBox" name="cmbDiscardsSupported">
+                       <property name="enabled">
+                        <bool>false</bool>
+                       </property>
                        <property name="minimumSize">
                         <size>
                          <width>70</width>
@@ -1842,7 +2077,7 @@
              <x>0</x>
              <y>0</y>
              <width>364</width>
-             <height>504</height>
+             <height>503</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_19">
@@ -2418,7 +2653,7 @@
              <x>0</x>
              <y>0</y>
              <width>364</width>
-             <height>504</height>
+             <height>503</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_24">
@@ -2794,7 +3029,7 @@
              <x>0</x>
              <y>0</y>
              <width>364</width>
-             <height>504</height>
+             <height>503</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_29">
@@ -2991,6 +3226,29 @@
                     </property>
                    </widget>
                   </item>
+                  <item>
+                   <spacer name="verticalSpacer_10">
+                    <property name="orientation">
+                     <enum>Qt::Vertical</enum>
+                    </property>
+                    <property name="sizeType">
+                     <enum>QSizePolicy::Fixed</enum>
+                    </property>
+                    <property name="sizeHint" stdset="0">
+                     <size>
+                      <width>20</width>
+                      <height>6</height>
+                     </size>
+                    </property>
+                   </spacer>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="cbTransactSync">
+                    <property name="text">
+                     <string>Sync</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </widget>
                </item>
@@ -3047,7 +3305,7 @@
              <x>0</x>
              <y>0</y>
              <width>364</width>
-             <height>504</height>
+             <height>503</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_10">
@@ -3247,7 +3505,7 @@
      <x>0</x>
      <y>0</y>
      <width>370</width>
-     <height>20</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">

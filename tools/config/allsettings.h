@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -90,6 +90,7 @@ struct AllSettings
 
     // "General" tab
     CbSetting *cbsReadonly;
+    CbSetting *cbsAutomaticDiscards;
     RbtnSetting *rbtnsUsePosix;
     RbtnSetting *rbtnsUseFse;
     CbSetting *cbsPosixFormat;
@@ -101,6 +102,8 @@ struct AllSettings
     CbSetting *cbsPosixAtomicRename;
     CbSetting *cbsPosixFtruncate;
     CbSetting *cbsPosixDirOps;
+    CbSetting *cbsPosixCwd;
+    CbSetting *cbsPosixFstrim;
     SbSetting *sbsMaxNameLen;
     PathSepSetting *pssPathSepChar;
     SbSetting *sbsTaskCount;
@@ -146,13 +149,15 @@ struct AllSettings
     CbSetting *cbsTrUnlink;
     CbSetting *cbsTrWrite;
     CbSetting *cbsTrTruncate;
-    CbSetting *cbsTrSync;
+    CbSetting *cbsTrFSync;
     CbSetting *cbsTrClose;
     CbSetting *cbsTrVolFull;
     CbSetting *cbsTrUmount;
+    CbSetting *cbsTrSync;
 };
 
 extern const QString macroNameReadonly;
+extern const QString macroNameAutomaticDiscards;
 extern const QString macroNameUsePosix;
 extern const QString macroNameUseFse;
 extern const QString macroNamePosixFormat;
@@ -164,6 +169,8 @@ extern const QString macroNamePosixRename;
 extern const QString macroNamePosixRenameAtomic;
 extern const QString macroNamePosixFtruncate;
 extern const QString macroNamePosixDirOps;
+extern const QString macroNamePosixCwd;
+extern const QString macroNamePosixFstrim;
 extern const QString macroNameMaxNameLen;
 extern const QString macroNamePathSepChar;
 extern const QString macroNameTaskCount;
@@ -192,7 +199,6 @@ extern const QString macroNameIndirectPtrs;
 // Not in UI:
 extern const QString macroNameInlineImap;
 extern const QString macroNameExternalImap;
-extern const QString macroNameDiscardSupport;
 
 // "Memory" tab
 extern const QString macroNameAllocatedBuffers;
@@ -215,10 +221,11 @@ extern const QString macroNameTrLink;
 extern const QString macroNameTrUnlink;
 extern const QString macroNameTrWrite;
 extern const QString macroNameTrTruncate;
-extern const QString macroNameTrSync;
+extern const QString macroNameTrFSync;
 extern const QString macroNameTrClose;
 extern const QString macroNameTrVolFull;
 extern const QString macroNameTrUmount;
+extern const QString macroNameTrSync;
 
 // Mem & str management function names
 extern const QString cstdMemcpy;

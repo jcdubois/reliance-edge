@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
+                   Copyright (c) 2014-2019 Datalight, Inc.
                        All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -65,6 +65,46 @@ Validity emptyStringValidator(QString value, QString &msg)
 {
     (void)value;
     (void)msg;
+    return Valid;
+}
+
+///
+/// \brief  Validator for allSettings::cbAutomaticDiscards.
+///
+///         Requires that ::allSettings and ::volumeSettings be initialized.
+///
+///         Side effect: calls ::volumeSettings->SetDiscardsEnabled.
+///
+Validity validateAutomaticDiscards(bool value, QString &msg)
+{
+    Q_ASSERT(allSettings.cbsAutomaticDiscards != NULL);
+
+    if(!volumeSettings->GetDiscardsSupported() && value)
+    {
+        msg = QString("None of the defined volumes support discards.");
+        return Invalid;
+    }
+
+    return Valid;
+}
+
+///
+/// \brief  Validator for allSettings::cbPosixFstrim.
+///
+///         Requires that ::allSettings and ::volumeSettings be initialized.
+///
+///         Side effect: calls ::volumeSettings->SetDiscardsEnabled.
+///
+Validity validatePosixFstrim(bool value, QString &msg)
+{
+    Q_ASSERT(allSettings.cbsPosixFstrim != NULL);
+
+    if(!volumeSettings->GetDiscardsSupported() && value)
+    {
+        msg = QString("None of the defined volumes support discards.");
+        return Invalid;
+    }
+
     return Valid;
 }
 
@@ -254,9 +294,9 @@ Validity validateHandleCount(unsigned long value, QString &msg)
 ///
 Validity validateBlockSize(unsigned long value, QString &msg)
 {
-    if(value < 256 || value > 65536)
+    if(value < 128 || value > 65536)
     {
-        msg = "Block size must be a power of 2 between 256 and 65536.";
+        msg = "Block size must be a power of 2 between 128 and 65536.";
         return Invalid;
     }
 
@@ -382,10 +422,10 @@ Validity validateVolSectorSize(unsigned long value, QString &msg)
 {
     Q_ASSERT(allSettings.cmisBlockSize != NULL);
     if(!isPowerOfTwo(value)
-            || value < 256
+            || value < 128
             || value > 65536) // 2^16. Same max in block size
     {
-        msg = "Sector size must be a power of 2 between 256 and 65536.";
+        msg = "Sector size must be a power of 2 between 128 and 65536.";
         return Invalid;
     }
 
@@ -438,6 +478,35 @@ Validity validateVolSectorCount(unsigned long value, QString &msg)
     }
 
     else return Valid;
+}
+
+///
+/// \brief  Validator for a VolumeSettings::Volume::stSectorCount.
+///
+///         Assumes the validator is being run on the volume at
+///         volumeSettings::activeIndex. Requires ::allSettings and
+///         ::volumeSettings be initialized.
+///
+Validity validateVolSectorOff(unsigned long value, QString &msg)
+{
+    (void)value;
+    unsigned long sectorSize = volumeSettings
+                                ->GetVolumes()
+                                ->at(volumeSettings->GetCurrentIndex())
+                                ->GetStSectorSize()
+                                ->GetValue();
+    unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
+
+    // Avoid division by 0
+    if(blockSize == 0 || sectorSize == 0 || blockSize < sectorSize)
+    {
+        msg = "Invalid block or sector size; cannot validate volume size.";
+        return Warning;
+    }
+	else
+	{
+		return Valid;
+	}
 }
 
 ///
@@ -867,14 +936,14 @@ qulonglong getVolSizeMaxBytes()
     qlonglong mrImapBits = (static_cast<qlonglong>(blockSize) - mrHeader) * 8;
     qlonglong imapBits = (static_cast<qlonglong>(blockSize) - 16) * 8;
 
-    qulonglong imapMax = mrImapBits * mrImapBits * static_cast<qulonglong>(blockSize);
+    qulonglong imapMax = mrImapBits * imapBits * static_cast<qulonglong>(blockSize);
 
     if(mrImapBits < 0 || imapBits < 0)
     {
         imapMax = 0;
     }
 
-    qulonglong blockMax_32bit = 4294967296ULL * static_cast<qlonglong>(blockSize);
+    qulonglong blockMax_32bit = 0xFFFFFFFFULL * static_cast<qlonglong>(blockSize);
 
     return (blockMax_32bit < imapMax) ? blockMax_32bit : imapMax;
 }
