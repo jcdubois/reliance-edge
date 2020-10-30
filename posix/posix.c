@@ -2104,6 +2104,106 @@ int32_t red_fstat(
 }
 
 
+#if (REDCONF_ATTRIBUTES_MAX > 0)
+
+/** @brief Get the an extended attribute of a file or directory.
+
+    @param iFildes        An open file descriptor for the file whose
+    i                     extended attribute is to be retrieved.
+    @param ulAttributeId Index of the extended attribute to get
+    @param pulAttribute  Pointer to an unsigned int where to put the retrieved
+                         extended attribute.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBADF: The @p iFildes argument is not a valid file descriptor.
+    - #RED_EINVAL: @p pulAttribute is `NULL`; @p ulAttributeId is out of range.
+    - #RED_EIO: A disk I/O error occurred.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_fgetxattr(
+    int32_t     iFildes,
+    uint32_t    ulAttributeId,
+    uint32_t   *pulAttribute)
+{
+    REDSTATUS   ret;
+
+    ret = PosixEnter();
+    if(ret == 0)
+    {
+        REDHANDLE *pHandle;
+
+        ret = FildesToHandle(iFildes, FTYPE_EITHER, &pHandle);
+
+      #if REDCONF_VOLUME_COUNT > 1U
+        if(ret == 0)
+        {
+            ret = RedCoreVolSetCurrent(pHandle->bVolNum);
+        }
+      #endif
+
+        if(ret == 0)
+        {
+            ret = RedCoreGetAttribute(pHandle->ulInode, ulAttributeId, pulAttribute);
+        }
+
+        PosixLeave();
+    }
+
+    return PosixReturn(ret);
+}
+
+/** @brief Set an extended attribute of a file or directory.
+
+    @param iFildes        An open file descriptor for the file whose
+                          extended attribute is to be set.
+    @param ulAttributeId Index of the extended attribute to get
+    @param ulAttribute   Value to be set to the attribute.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBADF: The @p iFildes argument is not a valid file descriptor.
+    - #RED_EINVAL: @p ulAttributeId is out of range.
+    - #RED_EIO: A disk I/O error occurred.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_fsetxattr(
+    int32_t     iFildes,
+    uint32_t    ulAttributeId,
+    uint32_t    ulAttribute)
+{
+    REDSTATUS   ret;
+
+    ret = PosixEnter();
+    if(ret == 0)
+    {
+        REDHANDLE *pHandle;
+
+        ret = FildesToHandle(iFildes, FTYPE_EITHER, &pHandle);
+
+      #if REDCONF_VOLUME_COUNT > 1U
+        if(ret == 0)
+        {
+            ret = RedCoreVolSetCurrent(pHandle->bVolNum);
+        }
+      #endif
+
+        if(ret == 0)
+        {
+            ret = RedCoreSetAttribute(pHandle->ulInode, ulAttributeId, ulAttribute);
+        }
+
+        PosixLeave();
+    }
+
+    return PosixReturn(ret);
+}
+#endif /* (REDCONF_ATTRIBUTES_MAX > 0) */
+
 #if REDCONF_API_POSIX_READDIR == 1
 /** @brief Open a directory stream for reading.
 

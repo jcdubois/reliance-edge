@@ -100,6 +100,9 @@ REDSTATUS RedCoreDirRead(uint32_t ulInode, uint32_t *pulPos, char *pszName, uint
 REDSTATUS RedCoreDirParent(uint32_t ulInode, uint32_t *pulPInode);
 #endif
 
-
+#if (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0)
+REDSTATUS RedCoreGetAttribute(uint32_t ulInode, uint32_t ulAttributeId, uint32_t *pulAttribute);
+REDSTATUS RedCoreSetAttribute(uint32_t ulInode, uint32_t ulAttributeId, uint32_t ulAttribute);
 #endif
 
+#endif

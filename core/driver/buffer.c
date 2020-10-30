@@ -1034,6 +1034,14 @@ static void BufferEndianSwapInode(
         {
             pInode->aulEntries[ulIdx] = RedRev32(pInode->aulEntries[ulIdx]);
         }
+
+      #if REDCONF_ATTRIBUTES_MAX > 0
+        for(ulIdx = 0; ulIdx < REDCONF_ATTRIBUTES_MAX; ulIdx++)
+        {
+            pInode->aulAttributes[ulIdx] =
+                                    RedRev32(pInode->aulAttributes[ulIdx]);
+        }
+      #endif
     }
 }
 

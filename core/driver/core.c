@@ -1920,3 +1920,97 @@ REDSTATUS RedCoreDirParent(
 }
 #endif /* (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_CWD == 1) */
 
+
+#if (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0)
+/** @brief Get one extended attribute of a file or directory.
+
+    @param ulInode       The inode number of the file or directory whose
+                         attribute is to be retrieved.
+    @param ulAttributeId The index of the attribute to be set.
+    @param pulAttribute  Pointer to an unsigned integer where the attribute
+                         value will be copied.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EBADF  @p ulInode is not a valid inode.
+    @retval -RED_EINVAL The volume is not mounted; @p ulAttributeId is out
+                        of range; @p pulAttribute is `NULL`.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
+REDSTATUS RedCoreGetAttribute(
+    uint32_t    ulInode,
+    uint32_t    ulAttributeId,
+    uint32_t   *pulAttribute)
+{
+    REDSTATUS   ret;
+
+    if(!gpRedVolume->fMounted || (ulAttributeId >= REDCONF_ATTRIBUTES_MAX)
+       || (pulAttribute == NULL))
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        CINODE ino;
+
+        ino.ulInode = ulInode;
+        ret = RedInodeMount(&ino, FTYPE_EITHER, false);
+
+        if(ret == 0)
+        {
+            *pulAttribute = ino.pInodeBuf->aulAttributes[ulAttributeId];
+
+            RedInodePut(&ino, 0U);
+        }
+    }
+
+    return ret;
+}
+#endif /* (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0) */
+
+#if (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0)
+/** @brief Set one extended attribute of a file or directory.
+
+    @param ulInode       The inode number of the file or directory whose
+                         attribute is to be set.
+    @param ulAttributeId The index of the attribute to be set.
+    @param ulAttribute   The value the attribute should be set to.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EBADF  @p ulInode is not a valid inode.
+    @retval -RED_EINVAL The volume is not mounted; @p ulAttributeId is out
+                        of range.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
+REDSTATUS RedCoreSetAttribute(
+    uint32_t    ulInode,
+    uint32_t    ulAttributeId,
+    uint32_t    ulAttribute)
+{
+    REDSTATUS   ret;
+
+    if(!gpRedVolume->fMounted || (ulAttributeId >= REDCONF_ATTRIBUTES_MAX))
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        CINODE ino;
+
+        ino.ulInode = ulInode;
+        ret = RedInodeMount(&ino, FTYPE_EITHER, false);
+
+        if(ret == 0)
+        {
+            ino.pInodeBuf->aulAttributes[ulAttributeId] = ulAttribute;
+
+            RedInodePut(&ino, 0U);
+        }
+    }
+
+    return ret;
+}
+#endif /* (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0) */

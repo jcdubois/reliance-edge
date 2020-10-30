@@ -183,6 +183,10 @@ int64_t red_lseek(int32_t iFildes, int64_t llOffset, REDWHENCE whence);
 int32_t red_ftruncate(int32_t iFildes, uint64_t ullSize);
 #endif
 int32_t red_fstat(int32_t iFildes, REDSTAT *pStat);
+#if (REDCONF_ATTRIBUTES_MAX > 0)
+int32_t red_fgetxattr(int32_t iFildes, uint32_t ulAttributeId, uint32_t *pulAttribute);
+int32_t red_fsetxattr(int32_t iFildes, uint32_t ulAttributeId, uint32_t ulAttribute);
+#endif
 #if REDCONF_API_POSIX_READDIR == 1
 REDDIR *red_opendir(const char *pszPath);
 REDDIRENT *red_readdir(REDDIR *pDirStream);

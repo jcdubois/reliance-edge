@@ -168,6 +168,10 @@ typedef struct
         the end of file.
     */
     uint32_t    aulEntries[INODE_ENTRIES];
+
+#if REDCONF_ATTRIBUTES_MAX > 0
+    uint32_t    aulAttributes[REDCONF_ATTRIBUTES_MAX];
+#endif
 } INODE;
 
 
