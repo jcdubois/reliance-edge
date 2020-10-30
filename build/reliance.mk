@@ -30,6 +30,7 @@ REDDRIVOBJ=								\
 	$(P_BASEDIR)/os/$(P_OS)/services/ostimestamp.$(B_OBJEXT)	\
 	$(P_BASEDIR)/posix/path.$(B_OBJEXT)				\
 	$(P_BASEDIR)/posix/posix.$(B_OBJEXT)				\
+	$(P_BASEDIR)/posix/crc_file_wrapper.$(B_OBJEXT)				\
 	$(P_BASEDIR)/util/bitmap.$(B_OBJEXT)				\
 	$(P_BASEDIR)/util/crc.$(B_OBJEXT)				\
 	$(P_BASEDIR)/util/memory.$(B_OBJEXT)				\
@@ -83,6 +84,7 @@ REDHDR=							\
 	$(P_BASEDIR)/include/redmisc.h			\
 	$(P_BASEDIR)/include/redosserv.h		\
 	$(P_BASEDIR)/include/redposix.h			\
+	$(P_BASEDIR)/include/crc_file_wrapper.h	\
 	$(P_BASEDIR)/include/redstat.h			\
 	$(P_BASEDIR)/include/redtests.h			\
 	$(P_BASEDIR)/include/redtestutils.h		\
@@ -137,6 +139,7 @@ $(P_BASEDIR)/os/$(P_OS)/services/ostask.$(B_OBJEXT):		$(P_BASEDIR)/os/$(P_OS)/se
 $(P_BASEDIR)/os/$(P_OS)/services/ostimestamp.$(B_OBJEXT):	$(P_BASEDIR)/os/$(P_OS)/services/ostimestamp.c $(REDHDR)
 $(P_BASEDIR)/posix/path.$(B_OBJEXT):				$(P_BASEDIR)/posix/path.c $(REDHDR) $(P_BASEDIR)/include/redpath.h
 $(P_BASEDIR)/posix/posix.$(B_OBJEXT):				$(P_BASEDIR)/posix/posix.c $(REDHDR) $(P_BASEDIR)/include/redpath.h
+$(P_BASEDIR)/posix/crc_file_wrapper.$(B_OBJEXT):				$(P_BASEDIR)/posix/crc_file_wrapper.c $(REDHDR) $(P_BASEDIR)/include/redpath.h
 $(P_BASEDIR)/tests/posix/fsstress.$(B_OBJEXT):			$(P_BASEDIR)/tests/posix/fsstress.c $(REDHDR) $(P_BASEDIR)/tests/posix/redposixcompat.h
 $(P_BASEDIR)/tests/util/atoi.$(B_OBJEXT):			$(P_BASEDIR)/tests/util/atoi.c $(REDHDR)
 $(P_BASEDIR)/tests/util/math.$(B_OBJEXT):			$(P_BASEDIR)/tests/util/math.c $(REDHDR)
