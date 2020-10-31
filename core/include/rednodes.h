@@ -125,7 +125,8 @@ typedef struct
 
 
 #define INODE_HEADER_SIZE   (NODEHEADER_SIZE + 8U + ((REDCONF_INODE_BLOCKS == 1) ? 4U : 0U) + \
-    ((REDCONF_INODE_TIMESTAMPS == 1) ? 12U : 0U) + 4U + ((REDCONF_API_POSIX == 1) ? 4U : 0U))
+    ((REDCONF_INODE_TIMESTAMPS == 1) ? 12U : 0U) + 4U + ((REDCONF_API_POSIX == 1) ? 4U : 0U) + \
+    (REDCONF_ATTRIBUTES_MAX * 4))
 #define INODE_ENTRIES       ((REDCONF_BLOCK_SIZE - INODE_HEADER_SIZE) / 4U)
 
 #if (REDCONF_DIRECT_POINTERS < 0) || (REDCONF_DIRECT_POINTERS > (INODE_ENTRIES - REDCONF_INDIRECT_POINTERS))
@@ -159,6 +160,13 @@ typedef struct
 #if REDCONF_API_POSIX == 1
     uint32_t    ulPInode;       /**< Parent inode number.  Only guaranteed to be accurate for directories. */
 #endif
+#if REDCONF_ATTRIBUTES_MAX > 0
+    /** Those would contain free value attributes that the user can get and
+        set. These attributes are protected by the INODE CRC and are not part
+        of the file data.
+     */
+    uint32_t    aulAttributes[REDCONF_ATTRIBUTES_MAX];
+#endif
 
     /** Block numbers for lower levels of the file metadata structure.  Some
         fraction of these entries are for direct pointers (file data block
@@ -169,9 +177,6 @@ typedef struct
     */
     uint32_t    aulEntries[INODE_ENTRIES];
 
-#if REDCONF_ATTRIBUTES_MAX > 0
-    uint32_t    aulAttributes[REDCONF_ATTRIBUTES_MAX];
-#endif
 } INODE;
 
 
