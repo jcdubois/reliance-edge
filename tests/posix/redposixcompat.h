@@ -32,6 +32,7 @@
 #ifndef REDPOSIXCOMPAT_H
 #define REDPOSIXCOMPAT_H
 
+#include <crc_file_wrapper.h>
 
 #ifndef assert
 #define assert(x) REDASSERT(x)
@@ -104,22 +105,22 @@
 #undef closedir
 #undef chdir
 #undef getcwd
-#define open(path, oflag) red_open(path, oflag)
+#define open(path, oflag) crc_file_wrapper_open(path, oflag)
 #define creat(path, mode) open(path, O_WRONLY|O_CREAT|O_TRUNC)
 #define unlink(path) red_unlink(path)
 #define mkdir(path) red_mkdir(path)
 #define rmdir(path) red_rmdir(path)
 #define rename(old, new) red_rename(old, new)
 #define link(path, hardlink) red_link(path, hardlink)
-#define close(fd) red_close(fd)
-#define read(fd, buf, len) red_read(fd, buf, len)
-#define write(fd, buf, len) red_write(fd, buf, len)
-#define fsync(fd) red_fsync(fd)
+#define close(fd) crc_file_wrapper_close(fd)
+#define read(fd, buf, len) crc_file_wrapper_read(fd, buf, len)
+#define write(fd, buf, len) crc_file_wrapper_write(fd, buf, len)
+#define fsync(fd) crc_file_wrapper_fsync(fd)
 #define fdatasync(fd) fsync(fd)
-#define lseek(fd, offset, whence) red_lseek(fd, offset, whence)
+#define lseek(fd, offset, whence) crc_file_wrapper_lseek(fd, offset, whence)
 #define lseek64(fd, offset, whence) lseek(fd, offset, whence)
-#define ftruncate(fd, size) red_ftruncate(fd, size)
-#define fstat(fd, stat) red_fstat(fd, stat)
+#define ftruncate(fd, size) crc_file_wrapper_ftruncate(fd, size)
+#define fstat(fd, stat) crc_file_wrapper_fstat(fd, stat)
 #define fstat64(fd, stat) fstat(fd, stat)
 #define opendir(path) red_opendir(path)
 #define readdir(dirp) red_readdir(dirp)

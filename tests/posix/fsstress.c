@@ -221,6 +221,15 @@ static int red_stat(
         (void)close(iFd);
     }
 
+    if ((iRet != -1) && RED_S_ISREG(pStat->st_mode)) {
+        iRet = crc_file_wrapper_check(pszPath);
+
+        if (iRet == -1) {
+            RedPrintf("fsstress: crc_file_wrapper_check(%s) failed\n",
+                      pszPath);
+        }
+    }
+
     return iRet;
 }
 
