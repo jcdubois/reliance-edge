@@ -16,12 +16,12 @@ static int32_t crc_file_wrapper_compute_crc(int32_t iFildes, uint32_t *pulCRC) {
   llOffset = red_lseek(iFildes, 0, RED_SEEK_SET);
 
   if (llOffset == 0) {
-    int32_t ilength = 0;
-    uint32_t aulBuffer[BUFFER_SIZE];
+    int32_t iLength = 0;
+    uint8_t abBuffer[BUFFER_SIZE];
 
     /* compute the CRC on the all file */
-    while ((ilength = red_read(iFildes, aulBuffer, sizeof(aulBuffer))) > 0) {
-      *pulCRC = RedCrc32Update(*pulCRC, aulBuffer, (uint32_t)ilength);
+    while ((iLength = red_read(iFildes, abBuffer, sizeof(abBuffer))) > 0) {
+      *pulCRC = RedCrc32Update(*pulCRC, abBuffer, (uint32_t)iLength);
     }
   }
 
@@ -29,6 +29,13 @@ static int32_t crc_file_wrapper_compute_crc(int32_t iFildes, uint32_t *pulCRC) {
 }
 
 int32_t crc_file_wrapper_open(const char *pszPath, uint32_t ulOpenMode) {
+  if (ulOpenMode & RED_O_WRONLY) {
+    /* In order to compute the CRC on the file data we need to be able
+     * to read them
+     */
+    ulOpenMode = (ulOpenMode & ~RED_O_WRONLY) | RED_O_RDWR;
+  }
+
   return red_open(pszPath, ulOpenMode);
 }
 
@@ -134,27 +141,32 @@ int32_t crc_file_wrapper_fstat(int32_t iFildes, REDSTAT *pStat) {
 }
 
 int32_t crc_file_wrapper_check(const char *pszPath) {
+  REDSTAT Stat;
   int32_t iFildes = -1;
   uint32_t ulCRCattribute = 0;
   uint32_t ulCRCcomputed = 0;
   int32_t iRet = iFildes = red_open(pszPath, RED_O_RDONLY);
 
   if (iRet != -1) {
+    iRet = red_fstat(iFildes, &Stat);
+  }
+
+  if ((iRet != -1) && RED_S_ISREG(Stat.st_mode)) {
     /* retreive the CRC attribute */
     iRet = red_fgetxattr(iFildes, FILE_CRC_ATTRIBUTE, &ulCRCattribute);
-  }
 
-  if (iRet != -1) {
-    /* compute the CRC on the file */
-    iRet = crc_file_wrapper_compute_crc(iFildes, &ulCRCcomputed);
-  }
+    if (iRet != -1) {
+      /* compute the CRC on the file */
+      iRet = crc_file_wrapper_compute_crc(iFildes, &ulCRCcomputed);
+    }
 
-  if (iRet != -1) {
-    if (ulCRCattribute == ulCRCcomputed) {
-      /* The 2 CRC are matching */
-      iRet = 0;
-    } else {
-      iRet = -1;
+    if (iRet != -1) {
+      if (ulCRCattribute == ulCRCcomputed) {
+        /* The 2 CRC are matching */
+        iRet = 0;
+      } else {
+        iRet = -1;
+      }
     }
   }
 
@@ -171,18 +183,23 @@ int32_t crc_file_wrapper_check(const char *pszPath) {
 }
 
 int32_t crc_file_wrapper_fix(const char *pszPath) {
+  REDSTAT Stat;
   int32_t iFildes = -1;
   uint32_t ulCRCcomputed = 0;
   int32_t iRet = iFildes = red_open(pszPath, RED_O_RDONLY);
 
   if (iRet != -1) {
-    /* compute the file CRC */
-    iRet = crc_file_wrapper_compute_crc(iFildes, &ulCRCcomputed);
+    iRet = red_fstat(iFildes, &Stat);
   }
 
-  if (iRet != -1) {
-    /* associate the new CRC to the file */
-    iRet = red_fsetxattr(iFildes, FILE_CRC_ATTRIBUTE, ulCRCcomputed);
+  if ((iRet != -1) && RED_S_ISREG(Stat.st_mode)) {
+    /* compute the file CRC */
+    iRet = crc_file_wrapper_compute_crc(iFildes, &ulCRCcomputed);
+
+    if (iRet != -1) {
+      /* associate the new CRC to the file */
+      iRet = red_fsetxattr(iFildes, FILE_CRC_ATTRIBUTE, ulCRCcomputed);
+    }
   }
 
   if (iFildes != -1) {
