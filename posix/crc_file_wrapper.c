@@ -143,8 +143,6 @@ int32_t crc_file_wrapper_fstat(int32_t iFildes, REDSTAT *pStat) {
 int32_t crc_file_wrapper_check(const char *pszPath) {
   REDSTAT Stat;
   int32_t iFildes = -1;
-  uint32_t ulCRCattribute = 0;
-  uint32_t ulCRCcomputed = 0;
   int32_t iRet = iFildes = red_open(pszPath, RED_O_RDONLY);
 
   if (iRet != -1) {
@@ -152,6 +150,9 @@ int32_t crc_file_wrapper_check(const char *pszPath) {
   }
 
   if ((iRet != -1) && RED_S_ISREG(Stat.st_mode)) {
+    uint32_t ulCRCattribute = 0;
+    uint32_t ulCRCcomputed = 0;
+
     /* retreive the CRC attribute */
     iRet = red_fgetxattr(iFildes, FILE_CRC_ATTRIBUTE, &ulCRCattribute);
 
@@ -185,7 +186,6 @@ int32_t crc_file_wrapper_check(const char *pszPath) {
 int32_t crc_file_wrapper_fix(const char *pszPath) {
   REDSTAT Stat;
   int32_t iFildes = -1;
-  uint32_t ulCRCcomputed = 0;
   int32_t iRet = iFildes = red_open(pszPath, RED_O_RDONLY);
 
   if (iRet != -1) {
@@ -193,6 +193,8 @@ int32_t crc_file_wrapper_fix(const char *pszPath) {
   }
 
   if ((iRet != -1) && RED_S_ISREG(Stat.st_mode)) {
+    uint32_t ulCRCcomputed = 0;
+
     /* compute the file CRC */
     iRet = crc_file_wrapper_compute_crc(iFildes, &ulCRCcomputed);
 
