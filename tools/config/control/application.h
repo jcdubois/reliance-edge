@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -71,7 +71,7 @@ public slots:
     ///
     /// \brief  Calls Output::TrySave and handles results
     ///
-    /// If the user is editting existing configuration files, this attempts to
+    /// If the user is editing existing configuration files, this attempts to
     /// save over the existing files and shows the save dialogs if that fails.
     ///
     void TrySave();

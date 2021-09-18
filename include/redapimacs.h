@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -59,7 +59,7 @@
 /** Mask of all supported unmount flags. */
 #define RED_UMOUNT_MASK     RED_UMOUNT_FORCE
 
-/** Defualt unmount flags. */
+/** Default unmount flags. */
 #define RED_UMOUNT_DEFAULT  0U
 
 

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -1189,7 +1189,7 @@ void VolumeSettings::listVolumes_currentRowChanged(int row)
     if(row < 0 || row == activeIndex)
     {
         // `row` will equal `activeIndex` when the row is
-        // changed programatically. `row` will equal -1
+        // changed programmatically. `row` will equal -1
         // when the listVolumes is cleared.
         return;
     }

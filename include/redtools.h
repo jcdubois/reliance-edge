@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -37,6 +37,8 @@
 
 #if REDCONF_IMAGE_BUILDER == 1
 
+#include "redformat.h"
+
 #define MACRO_NAME_MAX_LEN 32
 
 typedef struct
@@ -51,6 +53,7 @@ typedef struct
     const char *pszDefineFile;
     bool        fNowarn;
   #endif
+    REDFMTOPT   fmtopt;
 } IMGBLDPARAM;
 
 

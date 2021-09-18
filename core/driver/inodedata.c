@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -28,6 +28,15 @@
 #include <redfs.h>
 #include <redcore.h>
 
+
+/*  Get the buffer flag for an inode's data block.
+*/
+#if REDCONF_API_POSIX == 1
+#define CINODE_DATA_BFLAG(cino) \
+    (((cino)->fDirectory && (gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC)) ? BFLAG_META_DIRECTORY : 0U)
+#else
+#define CINODE_DATA_BFLAG(cino) 0U
+#endif
 
 /*  This value is used to initialize the uIndirEntry and uDindirEntry members of
     the CINODE structure.  After seeking, a value of COORD_ENTRY_INVALID in
@@ -672,7 +681,7 @@ static REDSTATUS TruncDindir(
 
 
 #if REDCONF_DIRECT_POINTERS < INODE_ENTRIES
-/** @brief Truncate a indirect.
+/** @brief Truncate an indirect.
 
     @param pInode   A pointer to the cached inode, whose coordinates indicate
                     the truncation boundary.
@@ -902,7 +911,7 @@ REDSTATUS RedInodeDataSeekAndRead(
     {
         REDASSERT(pInode->ulDataBlock != BLOCK_SPARSE);
 
-        ret = RedBufferGet(pInode->ulDataBlock, 0U, (void **)&pInode->pbData);
+        ret = RedBufferGet(pInode->ulDataBlock, CINODE_DATA_BFLAG(pInode), (void **)&pInode->pbData);
     }
 
     return ret;
@@ -1249,21 +1258,11 @@ static REDSTATUS ReadAligned(
 
             if(ret == 0)
             {
-              #if REDCONF_READ_ONLY == 0
-                /*  Before reading directly from disk, flush any dirty file data
-                    buffers in the range to avoid reading stale data.
-                */
-                ret = RedBufferFlushRange(ulExtentStart, ulExtentLen);
+                ret = RedBufferReadRange(ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
 
                 if(ret == 0)
-              #endif
                 {
-                    ret = RedIoRead(gbRedVolNum, ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
-
-                    if(ret == 0)
-                    {
-                        ulBlockIndex += ulExtentLen;
-                    }
+                    ulBlockIndex += ulExtentLen;
                 }
             }
             else if(ret == -RED_ENODATA)
@@ -1373,6 +1372,19 @@ static REDSTATUS WriteAligned(
         uint32_t    ulBlockIndex = 0U;
         uint32_t    ulNextDataBlock = BLOCK_SPARSE;
 
+        /*  Put the data buffer.  If we did _not_ do this, and the initial
+            values in pInode were pInode->ulLogicalBlock == ulBlockStart and
+            pInode->pbData != NULL, then RedBufferDiscardRange() (called below)
+            would try to discard a referenced buffer, which is a critical error.
+
+            Currently, DirEntryWrite() is the only place which invokes
+            RedInodeDataWrite() with pInode in that state, and that will only
+            end up here if DIRENT_SIZE == REDCONF_BLOCK_SIZE.  Nonetheless, put
+            the buffer unconditionally in case other functions are modified such
+            that they call this function with pInode in that state.
+        */
+        RedInodePutData(pInode);
+
         while((ret == 0) && (ulBlockIndex < ulBlockCount))
         {
             bool        fFull = false;
@@ -1446,15 +1458,7 @@ static REDSTATUS WriteAligned(
 
             if(ret == 0)
             {
-                ret = RedIoWrite(gbRedVolNum, ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
-
-                if(ret == 0)
-                {
-                    /*  If there is any buffered file data for the extent we
-                        just wrote, those buffers are now stale.
-                    */
-                    ret = RedBufferDiscardRange(ulExtentStart, ulExtentLen);
-                }
+                ret = RedBufferWriteRange(ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
 
                 if(ret == 0)
                 {
@@ -1641,7 +1645,7 @@ static REDSTATUS BranchBlock(
               #endif
                 void  **ppBufPtr = (fBuffer || (pInode->pbData != NULL)) ? (void **)&pInode->pbData : NULL;
 
-                ret = BranchOneBlock(&pInode->ulDataBlock, ppBufPtr, 0U);
+                ret = BranchOneBlock(&pInode->ulDataBlock, ppBufPtr, CINODE_DATA_BFLAG(pInode));
 
                 if(ret == 0)
                 {

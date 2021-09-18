@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -166,7 +166,7 @@ static int FtwCopyFile(
 
 
 #if REDCONF_API_FSE == 1
-/** @brief Reads the contents of the input directory, assignes a file index
+/** @brief Reads the contents of the input directory, assigns a file index
            to each file name, and fills a linked list structure with the
            names and indexes. Does not inspect subdirectories. Prints any
            error messages to stderr.

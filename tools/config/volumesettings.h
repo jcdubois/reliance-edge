@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -56,7 +56,7 @@ class VolumeSettings : QObject
     Q_OBJECT
 public:
     ///
-    /// \brief  The Volume class ontains the Setting objects associated with a
+    /// \brief  The Volume class contains the Setting objects associated with a
     ///         volume.
     ///
     class Volume

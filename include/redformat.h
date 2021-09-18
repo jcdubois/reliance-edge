@@ -23,34 +23,33 @@
     more information.
 */
 /** @file
-    @brief Implements outputting a character string.
+    @brief Defines the format option structure.
 */
-#include <redfs.h>
-
-#if REDCONF_OUTPUT == 1
-
-#include <stdio.h>
+#ifndef REDFORMAT_H
+#define REDFORMAT_H
 
 
-/** @brief Write a string to a user-visible output location.
+#include "redexclude.h" /* for FORMAT_SUPPORTED */
 
-    Write a null-terminated string to the serial port, console, terminal, or
-    other display device, such that the text is visible to the user.
 
-    @param pszString    A null-terminated string.
+#if FORMAT_SUPPORTED
+/** @brief Configurable format parameters for red_format2().
+
+    @note Members may be added to this structure in the future.  Applications
+          should zero-initialize the entire structure to ensure forward
+          compatibility.
 */
-void RedOsOutputString(
-    const char *pszString)
+typedef struct
 {
-    if(pszString == NULL)
-    {
-        REDERROR();
-    }
-    else
-    {
-        printf("%s", pszString);
-    }
-}
-
+    /** Which on-disk layout version to create.  Supported values:
+        - #RED_DISK_LAYOUT_ORIGINAL: layout for Reliance Edge v0.9 through v2.5.x
+        - #RED_DISK_LAYOUT_DIRCRC: updated v2.6 layout with directory data CRCs.
+        - #RED_DISK_LAYOUT_VERSION: alias for the default on-disk layout.
+        - `0`: alternate alias for the default on-disk layout.
+    */
+    uint32_t ulVersion;
+} REDFMTOPT;
 #endif
 
+
+#endif /* REDFORMAT_H */

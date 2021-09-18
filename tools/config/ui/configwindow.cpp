@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -465,7 +465,7 @@ void ConfigWindow::actionAbout_clicked()
                 "Version " CONFIG_VERSION
                 "<br/><br/>"
                 "This utility is designed to be used to configure the Reliance "
-                "Edge file system. Documenation may be downloaded from "
+                "Edge file system. Documentation may be downloaded from "
                 "<a href='http://www.datalight.com/reliance-edge'>"
                 "datalight.com/reliance-edge</a>. For email support, contact "
                 "<a href='mailto:support@tuxera.com'>"

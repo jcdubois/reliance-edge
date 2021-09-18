@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -59,7 +59,7 @@ typedef enum
 typedef struct
 {
     bool            fOpen;      /* The block device is open. */
-    BDEVOPENMODE    mode;       /* Acess mode. */
+    BDEVOPENMODE    mode;       /* Access mode. */
     BDEVTYPE        type;       /* Disk type: ram disk or file disk. */
     uint8_t        *pbRamDisk;  /* Buffer for RAM disks. */
     const char     *pszSpec;    /* Path for file and raw disks. */
@@ -782,6 +782,55 @@ static REDSTATUS FileDiskOpen(
         pDisk->fIsBDev = S_ISBLK(stat.st_mode);
     }
 
+    /*  If the file disk is a regular file, make sure that it's big enough that
+        block 0 can be read successfully.  In most cases blocks will be written
+        before they are read, but many tests will try to mount the volume before
+        formatting in order to preserve format options.  If the file size is too
+        small, reading the master block will assert.  If instead there is zeroed
+        data in the master block, mount will cleanly return an error.
+    */
+    if((ret == 0) && !pDisk->fIsBDev)
+    {
+        /*  Get the current file size.  The earlier stat() might have failed (if
+            the file did not exist), so fstat() to make sure we have the size.
+        */
+        if(fstat64(pDisk->fd, &stat) == -1)
+        {
+            perror("fstat64");
+            ret = -RED_EIO;
+        }
+        else
+        {
+            BDEVINFO bi;
+
+            /*  Get the sector size.
+            */
+            ret = FileDiskGetGeometry(bVolNum, &bi);
+            if(ret == 0)
+            {
+                off_t block1offset = (off_t)(gaRedVolConf[bVolNum].ullSectorOffset * bi.ulSectorSize) + REDCONF_BLOCK_SIZE;
+
+                /*  If the file size is too small...
+                */
+                if(stat.st_size < block1offset)
+                {
+                    /*  Extend the file.
+                    */
+                    if(ftruncate(pDisk->fd, block1offset) == -1)
+                    {
+                        perror("ftruncate");
+                        ret = -RED_EIO;
+                    }
+                }
+            }
+        }
+
+        if(ret != 0)
+        {
+            (void)FileDiskClose(bVolNum);
+        }
+    }
+
     return ret;
 }
 
@@ -827,7 +876,7 @@ static REDSTATUS FileDiskClose(uint8_t bVolNum)
 
 /** @brief Return the block device geometry.
 
-    Supported only on existing file disks.  Sector size must be spepcified in
+    Supported only on existing file disks.  Sector size must be specified in
     the volume config.
 
     @param bVolNum          The volume number of the volume whose block device

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -40,7 +40,7 @@
 
 ///
 /// \brief  The Setting class is used to represent settings displayed by the UI.
-///         This class controls validity checking and value storage; derrived
+///         This class controls validity checking and value storage; derived
 ///         classes may also control user interface interaction.
 ///
 /// \tparam T   The type which this setting holds

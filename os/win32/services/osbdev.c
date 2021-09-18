@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2020 Tuxera US Inc.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -27,6 +27,7 @@
 */
 #include <windows.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,7 +46,7 @@ typedef enum
 typedef struct
 {
     bool            fOpen;      /* The block device is open. */
-    BDEVOPENMODE    mode;       /* Acess mode. */
+    BDEVOPENMODE    mode;       /* Access mode. */
     BDEVTYPE        type;       /* Disk type: ram disk, file disk, raw disk. */
     uint8_t        *pbRamDisk;  /* Buffer for RAM disks. */
     const char     *pszSpec;    /* Path for file and raw disks. */
@@ -832,6 +833,62 @@ static REDSTATUS FileDiskOpen(
         }
     }
 
+    /*  Since this is a file disk, make sure that it's big enough that block 0
+        can be read successfully.  In most cases blocks will be written before
+        they are read, but many tests will try to mount the volume before
+        formatting in order to preserve format options.  If the file size is too
+        small, reading the master block will assert.  If instead there is zeroed
+        data in the master block, mount will cleanly return an error.
+    */
+    if(ret == 0)
+    {
+        LARGE_INTEGER fileSize;
+
+        /*  Get the current file size.
+        */
+        if(!GetFileSizeEx(pDisk->hDevice, &fileSize))
+        {
+            fprintf(stderr, "GetFileSizeEx() failed with error %lu\n", (unsigned long)GetLastError());
+            ret = -RED_EIO;
+        }
+        else
+        {
+            BDEVINFO bi;
+
+            /*  Get the sector size.
+            */
+            ret = FileDiskGetGeometry(bVolNum, &bi);
+            if(ret == 0)
+            {
+                LONGLONG block1offset = (LONGLONG)(gaRedVolConf[bVolNum].ullSectorOffset * bi.ulSectorSize) + REDCONF_BLOCK_SIZE;
+
+                /*  If the file size is too small...
+                */
+                if(fileSize.QuadPart < block1offset)
+                {
+                    /*  Extend the file.
+                    */
+                    fileSize.QuadPart = block1offset;
+                    if(!SetFilePointerEx(pDisk->hDevice, fileSize, NULL, FILE_BEGIN))
+                    {
+                        fprintf(stderr, "SetFilePointerEx() failed with error %lu\n", (unsigned long)GetLastError());
+                        ret = -RED_EIO;
+                    }
+                    else if(!SetEndOfFile(pDisk->hDevice))
+                    {
+                        fprintf(stderr, "SetEndOfFile() failed with error %lu\n", (unsigned long)GetLastError());
+                        ret = -RED_EIO;
+                    }
+                }
+            }
+        }
+
+        if(ret != 0)
+        {
+            (void)FileDiskClose(bVolNum);
+        }
+    }
+
     return ret;
 }
 
@@ -876,7 +933,7 @@ static REDSTATUS FileDiskClose(
 
 /** @brief Return the block device geometry.
 
-    Supported only on existing file disks.  Sector size must be spepcified in
+    Supported only on existing file disks.  Sector size must be specified in
     the volume config.
 
     @param bVolNum          The volume number of the volume whose block device
@@ -1271,7 +1328,7 @@ static REDSTATUS RawDiskGetGeometry(
 
         /*  Try querying the partition info.  If the specified drive is a
             partition, this should succeed and provide an accurate length.
-            Otherwise, the a physical drive was specified, not a partition.
+            Otherwise, a physical drive was specified, not a partition.
         */
         if(DeviceIoControl(gaDisk[bVolNum].hDevice, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfo, sizeof(partInfo), &dwUnused, NULL))
         {
