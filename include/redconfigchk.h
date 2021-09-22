@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -34,8 +34,8 @@
         version of the Reliance Edge Configuration Utility that is designed
         for a more recent version of Reliance Edge and is no longer compatible
         with this version.  You can update to the most recent version of
-        Reliance Edge or contact RelianceEdgeSupport@datalight.com to obtain
-        the correct legacy version of the Configuration Utility.
+        Reliance Edge or contact support@tuxera.com to obtain the correct legacy
+        version of the Configuration Utility.
     */
     #error "Your configuration is not compatible with this version of Reliance Edge. Please download the latest version of Reliance Edge or recreate your configuration with an older version of the Configuration Utility."
   #endif
@@ -162,6 +162,12 @@
 #ifndef REDCONF_BUFFER_COUNT
   #error "Configuration error: REDCONF_BUFFER_COUNT must be defined."
 #endif
+#ifndef REDCONF_BUFFER_ALIGNMENT
+  #error "Configuration error: REDCONF_BUFFER_ALIGNMENT must be defined."
+#endif
+#ifndef REDCONF_BUFFER_WRITE_GATHER_SIZE_KB
+  #error "Configuration error: REDCONF_BUFFER_WRITE_GATHER_SIZE_KB must be defined."
+#endif
 #ifndef REDCONF_BLOCK_SIZE
   #error "Configuration error: REDCONF_BLOCK_SIZE must be defined."
 #endif
@@ -245,9 +251,13 @@
     #error "Configuration error: REDCONF_API_POSIX_FSTRIM must be either 0 or 1."
   #endif
   #if (REDCONF_API_POSIX_FSTRIM == 1) && (RED_KIT == RED_KIT_GPL)
-    #error "REDCONF_API_POSIX_FSTRIM not supported in Reliance Edge under GPL. Contact sales@datalight.com to upgrade."
+    #error "REDCONF_API_POSIX_FSTRIM not supported in Reliance Edge under GPL. Contact sales@tuxera.com to upgrade."
   #endif
 
+  /*  Maximum is either block size minus 4 or block size minus 20, depending on
+      the on-disk layout version.  Since we don't know the layout version, check
+      the looser limit.
+  */
   #if (REDCONF_NAME_MAX < 1U) || (REDCONF_NAME_MAX > (REDCONF_BLOCK_SIZE - 4U))
     #error "Configuration error: invalid value of REDCONF_NAME_MAX"
   #endif
@@ -351,13 +361,7 @@
 #endif
 
 #if (REDCONF_DISCARDS == 1) && (RED_KIT == RED_KIT_GPL)
-  #error "REDCONF_DISCARDS not supported in Reliance Edge under GPL. Contact sales@datalight.com to upgrade."
-#endif
-
-/*  REDCONF_BUFFER_COUNT lower limit checked in buffer.c
-*/
-#if REDCONF_BUFFER_COUNT > 255U
-  #error "REDCONF_BUFFER_COUNT cannot be greater than 255"
+  #error "REDCONF_DISCARDS not supported in Reliance Edge under GPL. Contact sales@tuxera.com to upgrade."
 #endif
 
 #if (REDCONF_IMAGE_BUILDER != 0) && (REDCONF_IMAGE_BUILDER != 1)

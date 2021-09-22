@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -45,17 +45,17 @@ void Input::TryLoad()
                                     QFileDialog::ExistingFile);
     }
 
-    QString headerPath = fileDialog->ShowGetHeader(QString::null);
+    QString headerPath = fileDialog->ShowGetHeader(QString());
     if(headerPath.isNull() || headerPath.isEmpty())
     {
-        emit results(InResultUserCancelled, QString::null, QString::null);
+        emit results(InResultUserCancelled, QString(), QString());
         return;
     }
 
-    QString codefilePath = fileDialog->ShowGetCodefile(QString::null);
+    QString codefilePath = fileDialog->ShowGetCodefile(QString());
     if(codefilePath.isNull() || codefilePath.isEmpty())
     {
-        emit results(InResultUserCancelled, QString::null, QString::null);
+        emit results(InResultUserCancelled, QString(), QString());
         return;
     }
 
@@ -128,7 +128,7 @@ bool Input::getFile(const QString &filePath, QString &fileContent)
         {
             // Don't bother hanging the computer trying to read
             // this file. It's way too big.
-            emit results(InResultErrorHugeFile, QString::null, QString::null);
+            emit results(InResultErrorHugeFile, QString(), QString());
             return false;
         }
 
@@ -146,7 +146,7 @@ bool Input::getFile(const QString &filePath, QString &fileContent)
 
     if(!success)
     {
-        emit results(InResultFileError, QString::null, QString::null);
+        emit results(InResultFileError, QString(), QString());
         return false;
     }
     else return true;

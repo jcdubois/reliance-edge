@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,7 +29,9 @@
 
 #if REDCONF_ASSERTS == 1
 
-#include <redosdeviations.h>
+#if REDCONF_OUTPUT == 1
+#include <stdio.h>
+#endif
 
 
 /** @brief Invoke the native assertion handler.
@@ -44,7 +46,8 @@ void RedOsAssertFail(
     uint32_t    ulLineNum)
 {
   #if REDCONF_OUTPUT == 1
-    IGNORE_ERRORS(PRINT_ASSERT(pszFileName, ulLineNum));
+    (void)printf("Assertion failed in \"%s\" at line %u\n\r",
+        (pszFileName == NULL) ? "" : pszFileName, (unsigned)ulLineNum);
   #endif
 
     while(true)

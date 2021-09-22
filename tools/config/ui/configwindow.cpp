@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -141,7 +141,9 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     // Must be initialized after allSettings.cmisBlockSize
     volumeSettings = new VolumeSettings(ui->lePathPrefix,
                                         ui->cmbSectorSize,
+                                        ui->cbSectorSizeAuto,
                                         ui->sbVolSize,
+                                        ui->cbVolSizeAuto,
                                         ui->labelVolSizeBytes,
                                         ui->sbVolOff,
                                         ui->labelVolOffBytes,
@@ -301,50 +303,6 @@ void ConfigWindow::timerEvent(QTimerEvent *event)
     {
         return;
     }
-
-    // The code below assumes the General tab is selected, which should be true
-    // since this function is invoked only on startup. However, a common error
-    // is to use the WYSIWYG editor and save the .ui file while a different tab
-    // is selected, which will break this code. Assert to verify this isn't the
-    // case.
-    Q_ASSERT(ui->sawcGeneral->isVisible() == true);
-
-    // Set to content width plus about enough for a scrollbar and frames
-    int width = ui->sawcGeneral->width() + 25;
-
-    // Set to content height plus height of the rest of the window plus
-    // about enough for a scrollbar
-    int height = ui->sawcGeneral->height()
-            + this->height() - ui->scrollAreaGeneral->height()
-            + 20;
-
-    QDesktopWidget dw;
-    QRect mainScrSize = dw.availableGeometry(dw.primaryScreen());
-
-    if(width > mainScrSize.width())
-    {
-        width = mainScrSize.width();
-    }
-
-    if(height > mainScrSize.height())
-    {
-        height = mainScrSize.height();
-    }
-
-    resize(width, height);
-
-#ifdef Q_OS_LINUX
-    // On Windows, placing the resize within a timerEvent callback allows the
-    // config window to be placed by the OS. On Ubuntu, it still always opens
-    // in the corner. Move it to the middle instead.
-    if(mainScrSize.width() != 0 || mainScrSize.height() != 0)
-    {
-        int x = mainScrSize.width()/2 - width/2;
-        int y = mainScrSize.height()/2 - height/2;
-
-        move(x, y);
-    }
-#endif
 
     killTimer(timerId); // Don't call this function again.
 }
@@ -507,11 +465,11 @@ void ConfigWindow::actionAbout_clicked()
                 "Version " CONFIG_VERSION
                 "<br/><br/>"
                 "This utility is designed to be used to configure the Reliance "
-                "Edge file system. Documenation may be downloaded from "
+                "Edge file system. Documentation may be downloaded from "
                 "<a href='http://www.datalight.com/reliance-edge'>"
                 "datalight.com/reliance-edge</a>. For email support, contact "
-                "<a href='mailto:RelianceEdgeSupport@datalight.com'>"
-                "RelianceEdgeSupport@datalight.com</a>."
+                "<a href='mailto:support@tuxera.com'>"
+                "support@tuxera.com</a>."
                 );
     aboutBox.exec();
 }

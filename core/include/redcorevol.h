@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -32,6 +32,10 @@
 */
 typedef struct
 {
+    /** On-disk layout version (copied from the master block).
+    */
+    uint32_t    ulVersion;
+
     /** Whether this volume uses the inline imap (true) or external imap
         (false).  Computed at initialization time based on the block count.
     */
@@ -79,6 +83,10 @@ typedef struct
     bool        fUseReservedBlocks;
   #endif
 } COREVOLUME;
+
+/*  Array of COREVOLUME structures.
+*/
+extern COREVOLUME gaRedCoreVol[REDCONF_VOLUME_COUNT];
 
 /*  Pointer to the core volume currently being accessed; populated during
     RedCoreVolSetCurrent().

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -702,10 +702,6 @@ static bool IsDotOrDotDot(
 {
     bool fRet;
 
-    /*  Not using "IsDot(p) || IsDotDot(p)" because that would be flagged as a
-        violation of MISRA C:2012 Rule 13.5 -- which is a false positive since
-        IsDotDot() does not have side effects.
-    */
     fRet = IsDot(pszPathComponent);
     if(!fRet)
     {

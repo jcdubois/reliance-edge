@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -92,6 +92,7 @@ REDSTATUS RedFseTransMaskGet(uint8_t bVolNum, uint32_t *pulEventMask);
 #endif
 #if REDCONF_READ_ONLY == 0
 REDSTATUS RedFseTransact(uint8_t bVolNum);
+REDSTATUS RedFseRollback(uint8_t bVolNum);
 #endif
 
 #endif /* REDCONF_API_FSE == 1 */

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -93,7 +93,13 @@ typedef struct sREDHANDLE
     uint32_t        ulInode;    /**< Inode number; 0 if handle is available. */
     uint8_t         bVolNum;    /**< Volume containing the inode. */
     uint8_t         bFlags;     /**< Handle flags (type and mode). */
-    uint64_t        ullOffset;  /**< File or directory offset. */
+    union
+    {
+        uint64_t ullFileOffset;
+      #if REDCONF_API_POSIX_READDIR == 1
+        uint32_t ulDirPosition;
+      #endif
+    }               o;          /**< File or directory offset. */
   #if REDCONF_API_POSIX_READDIR == 1
     REDDIRENT       dirent;     /**< Dirent structure returned by red_readdir(). */
   #endif
@@ -530,14 +536,57 @@ int32_t red_mount2(
 int32_t red_umount(
     const char *pszVolume)
 {
+    return red_umount2(pszVolume, RED_UMOUNT_DEFAULT);
+}
+
+
+/** @brief Unmount a file system volume with flags.
+
+    This function is the same as red_umount(), except that it accepts a flags
+    parameter which can change the unmount behavior.
+
+    The following unmount flags are available:
+
+    - #RED_UMOUNT_FORCE: If specified, if the volume has open handles, the
+      handles will be closed.  Without this flag, the behavior is to return an
+      #RED_EBUSY error if the volume has open handles.
+
+    The #RED_UMOUNT_DEFAULT macro can be used to unmount with the default
+    unmount flags, which is equivalent to unmounting with red_umount().
+
+    @param pszVolume    A path prefix identifying the volume to unmount.
+    @param ulFlags      A bitwise-OR'd mask of unmount flags.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBUSY: There are still open handles for this file system volume and
+      the #RED_UMOUNT_FORCE flag was _not_ specified.
+    - #RED_EINVAL: @p pszVolume is `NULL`; or @p ulFlags includes invalid
+      unmount flags; or the driver is uninitialized; or the volume is already
+      unmounted.
+    - #RED_EIO: I/O error during unmount automatic transaction point.
+    - #RED_ENOENT: @p pszVolume is not a valid volume path prefix.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_umount2(
+    const char *pszVolume,
+    uint32_t    ulFlags)
+{
     REDSTATUS   ret;
 
     ret = PosixEnter();
     if(ret == 0)
     {
-        uint8_t bVolNum;
-
-        ret = RedPathVolumeLookup(pszVolume, &bVolNum);
+        if(ulFlags != (ulFlags & RED_UMOUNT_MASK))
+        {
+            ret = -RED_EINVAL;
+        }
+        else
+        {
+            ret = RedPathVolumeLookup(pszVolume, NULL);
+        }
 
         /*  The core will return success if the volume is already unmounted, so
             check for that condition here to propagate the error.
@@ -551,16 +600,25 @@ int32_t red_umount(
         {
             uint16_t    uHandleIdx;
 
-            /*  Do not unmount the volume if it still has open handles.
+            /*  If the volume has open handles, return an error -- unless the
+                force flag was specified, in which case all open handles are
+                closed.
             */
             for(uHandleIdx = 0U; uHandleIdx < REDCONF_HANDLE_COUNT; uHandleIdx++)
             {
-                const REDHANDLE *pHandle = &gaHandle[uHandleIdx];
+                REDHANDLE *pHandle = &gaHandle[uHandleIdx];
 
-                if((pHandle->ulInode != INODE_INVALID) && (pHandle->bVolNum == bVolNum))
+                if((pHandle->ulInode != INODE_INVALID) && (pHandle->bVolNum == gbRedVolNum))
                 {
-                    ret = -RED_EBUSY;
-                    break;
+                    if((ulFlags & RED_UMOUNT_FORCE) != 0U)
+                    {
+                        pHandle->ulInode = INODE_INVALID;
+                    }
+                    else
+                    {
+                        ret = -RED_EBUSY;
+                        break;
+                    }
                 }
             }
         }
@@ -575,7 +633,7 @@ int32_t red_umount(
         */
         if(ret == 0)
         {
-            CwdResetVol(bVolNum);
+            CwdResetVol(gbRedVolNum);
         }
       #endif
 
@@ -609,7 +667,49 @@ int32_t red_umount(
 int32_t red_format(
     const char *pszVolume)
 {
-    REDSTATUS   ret;
+    return red_format2(pszVolume, NULL);
+}
+
+
+/** @brief Format a file system volume with options.
+
+    This function is the same as red_format(), except that it accepts an options
+    parameter which can change the on-disk layout version and which, in the
+    future, may allow other aspects of the metadata to be specified at run-time.
+
+    Since new members may be added to ::REDFMTOPT, applications should
+    zero-initialize the structure to ensure forward compatibility.  For example:
+
+    @code{.c}
+    REDFMTOPT fmtopt = {0U};
+
+    fmtopt.ulVersion = RED_DISK_LAYOUT_ORIGINAL;
+    ret = red_format2("VOL0:", &fmtopt);
+    @endcode
+
+    @param pszVolume    A path prefix identifying the volume to format.
+    @param pOptions     Format options.  May be `NULL`, in which case the default
+                        values are used for the options, equivalent to
+                        red_format().  If non-`NULL`, the caller should
+                        zero-initialize the structure to ensure forward
+                        compatibility in the event that additional members are
+                        added to the ::REDFMTOPT structure.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBUSY: Volume is mounted.
+    - #RED_EINVAL: @p pszVolume is `NULL`; or the driver is uninitialized.
+    - #RED_EIO: I/O error formatting the volume.
+    - #RED_ENOENT: @p pszVolume is not a valid volume path prefix.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_format2(
+    const char         *pszVolume,
+    const REDFMTOPT    *pOptions)
+{
+    REDSTATUS           ret;
 
     ret = PosixEnter();
     if(ret == 0)
@@ -618,7 +718,7 @@ int32_t red_format(
 
         if(ret == 0)
         {
-            ret = RedCoreVolFormat();
+            ret = RedCoreVolFormat(pOptions);
         }
 
         PosixLeave();
@@ -626,7 +726,7 @@ int32_t red_format(
 
     return PosixReturn(ret);
 }
-#endif
+#endif /* (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX_FORMAT == 1) */
 
 
 #if REDCONF_READ_ONLY == 0
@@ -650,6 +750,7 @@ int32_t red_format(
     - #RED_EIO: I/O error during the transaction point.
     - #RED_ENOENT: @p pszVolume is not a valid volume path prefix.
     - #RED_EUSERS: Cannot become a file system user: too many users.
+    - #RED_EROFS: The file system volume is read-only.
 */
 int32_t red_transact(
     const char *pszVolume)
@@ -671,7 +772,83 @@ int32_t red_transact(
 
     return PosixReturn(ret);
 }
-#endif
+
+
+/** @brief Rollback to the previous transaction point.
+
+    Reliance Edge is a transactional file system.  All modifications, of both
+    metadata and filedata, are initially working state.  A transaction point is
+    a process whereby the working state atomically becomes the committed state,
+    replacing the previous committed state.  This call cancels all modifications
+    in the working state and reverts to the last committed state.  In other
+    words, calling this function will discard all changes made to the file
+    system since the most recent transaction point.
+
+    @param pszVolume    A path prefix identifying the volume to rollback.
+
+    @return On success, zero is returned.  On error, -1 is returned and
+            #red_errno is set appropriately.
+
+    <b>Errno values</b>
+    - #RED_EBUSY: There are still open handles for this file system volume.
+    - #RED_EINVAL: Volume is not mounted; or @p pszVolume is `NULL`.
+    - #RED_ENOENT: @p pszVolume is not a valid volume path prefix.
+    - #RED_EROFS: The file system volume is read-only.
+    - #RED_EUSERS: Cannot become a file system user: too many users.
+*/
+int32_t red_rollback(
+    const char *pszVolume)
+{
+    REDSTATUS   ret;
+
+    ret = PosixEnter();
+    if(ret == 0)
+    {
+        uint8_t bVolNum;
+
+        ret = RedPathVolumeLookup(pszVolume, &bVolNum);
+
+        if(ret == 0)
+        {
+            uint16_t    uHandleIdx;
+
+            /*  Do not rollback the volume if it still has open handles.
+            */
+            for(uHandleIdx = 0U; uHandleIdx < REDCONF_HANDLE_COUNT; uHandleIdx++)
+            {
+                const REDHANDLE *pHandle = &gaHandle[uHandleIdx];
+
+                if((pHandle->ulInode != INODE_INVALID) && (pHandle->bVolNum == bVolNum))
+                {
+                    ret = -RED_EBUSY;
+                    break;
+                }
+            }
+        }
+
+        if(ret == 0)
+        {
+            ret = RedCoreVolRollback();
+        }
+
+      #if REDCONF_API_POSIX_CWD == 1
+        /*  After reverting to the committed state, it's possible that the
+            working directories on this volume have ceased to exist.  To avoid
+            unexpected behavior, reset the CWD for any task whose CWD was on the
+            volume which was rolled back.
+        */
+        if(ret == 0)
+        {
+            CwdResetVol(bVolNum);
+        }
+      #endif
+
+        PosixLeave();
+    }
+
+    return PosixReturn(ret);
+}
+#endif /* REDCONF_READ_ONLY == 0 */
 
 
 #if REDCONF_READ_ONLY == 0
@@ -896,37 +1073,36 @@ int32_t red_open(
     int32_t     iFildes = -1;   /* Init'd to quiet warnings. */
     REDSTATUS   ret;
 
-  #if REDCONF_READ_ONLY == 1
-    if(ulOpenMode != RED_O_RDONLY)
-    {
-        ret = -RED_EROFS;
-    }
-  #else
-    if(    (ulOpenMode != (ulOpenMode & RED_O_MASK))
-        || ((ulOpenMode & (RED_O_RDONLY|RED_O_WRONLY|RED_O_RDWR)) == 0U)
-        || (((ulOpenMode & RED_O_RDONLY) != 0U) && ((ulOpenMode & (RED_O_WRONLY|RED_O_RDWR)) != 0U))
-        || (((ulOpenMode & RED_O_WRONLY) != 0U) && ((ulOpenMode & (RED_O_RDONLY|RED_O_RDWR)) != 0U))
-        || (((ulOpenMode & RED_O_RDWR) != 0U) && ((ulOpenMode & (RED_O_RDONLY|RED_O_WRONLY)) != 0U))
-        || (((ulOpenMode & (RED_O_TRUNC|RED_O_CREAT|RED_O_EXCL)) != 0U) && ((ulOpenMode & RED_O_RDONLY) != 0U))
-        || (((ulOpenMode & RED_O_EXCL) != 0U) && ((ulOpenMode & RED_O_CREAT) == 0U)))
-    {
-        ret = -RED_EINVAL;
-    }
-  #if REDCONF_API_POSIX_FTRUNCATE == 0
-    else if((ulOpenMode & RED_O_TRUNC) != 0U)
-    {
-        ret = -RED_EINVAL;
-    }
-  #endif
-  #endif
-    else
-    {
-        ret = PosixEnter();
-    }
-
+    ret = PosixEnter();
     if(ret == 0)
     {
-        ret = FildesOpen(pszPath, ulOpenMode, FTYPE_EITHER, &iFildes);
+      #if REDCONF_READ_ONLY == 1
+        if(ulOpenMode != RED_O_RDONLY)
+        {
+            ret = -RED_EROFS;
+        }
+      #else
+        if(    (ulOpenMode != (ulOpenMode & RED_O_MASK))
+            || ((ulOpenMode & (RED_O_RDONLY|RED_O_WRONLY|RED_O_RDWR)) == 0U)
+            || (((ulOpenMode & RED_O_RDONLY) != 0U) && ((ulOpenMode & (RED_O_WRONLY|RED_O_RDWR)) != 0U))
+            || (((ulOpenMode & RED_O_WRONLY) != 0U) && ((ulOpenMode & (RED_O_RDONLY|RED_O_RDWR)) != 0U))
+            || (((ulOpenMode & RED_O_RDWR) != 0U) && ((ulOpenMode & (RED_O_RDONLY|RED_O_WRONLY)) != 0U))
+            || (((ulOpenMode & (RED_O_TRUNC|RED_O_CREAT|RED_O_EXCL)) != 0U) && ((ulOpenMode & RED_O_RDONLY) != 0U))
+            || (((ulOpenMode & RED_O_EXCL) != 0U) && ((ulOpenMode & RED_O_CREAT) == 0U)))
+        {
+            ret = -RED_EINVAL;
+        }
+      #if REDCONF_API_POSIX_FTRUNCATE == 0
+        else if((ulOpenMode & RED_O_TRUNC) != 0U)
+        {
+            ret = -RED_EINVAL;
+        }
+      #endif
+      #endif
+        else
+        {
+            ret = FildesOpen(pszPath, ulOpenMode, FTYPE_EITHER, &iFildes);
+        }
 
         PosixLeave();
     }
@@ -1179,7 +1355,8 @@ int32_t red_rmdir(
     - #RED_EINVAL: @p pszOldPath is `NULL`; or @p pszNewPath is `NULL`; or the
       volume containing the path is not mounted; or #REDCONF_API_POSIX_CWD is
       true and either path ends with dot or dot-dot; or #REDCONF_API_POSIX_CWD
-      is false and @p pszNewPath ends with dot or dot-dot.
+      is false and @p pszNewPath ends with dot or dot-dot; or the rename is
+      cyclic.
     - #RED_EIO: A disk I/O error occurred.
     - #RED_EISDIR: The @p pszNewPath argument names a directory and the
       @p pszOldPath argument names a non-directory.
@@ -1470,14 +1647,14 @@ int32_t red_read(
         if(ret == 0)
         {
             ulLenRead = ulLength;
-            ret = RedCoreFileRead(pHandle->ulInode, pHandle->ullOffset, &ulLenRead, pBuffer);
+            ret = RedCoreFileRead(pHandle->ulInode, pHandle->o.ullFileOffset, &ulLenRead, pBuffer);
         }
 
         if(ret == 0)
         {
             REDASSERT(ulLenRead <= ulLength);
 
-            pHandle->ullOffset += ulLenRead;
+            pHandle->o.ullFileOffset += ulLenRead;
         }
 
         PosixLeave();
@@ -1590,21 +1767,21 @@ int32_t red_write(
             ret = RedCoreStat(pHandle->ulInode, &s);
             if(ret == 0)
             {
-                pHandle->ullOffset = s.st_size;
+                pHandle->o.ullFileOffset = s.st_size;
             }
         }
 
         if(ret == 0)
         {
             ulLenWrote = ulLength;
-            ret = RedCoreFileWrite(pHandle->ulInode, pHandle->ullOffset, &ulLenWrote, pBuffer);
+            ret = RedCoreFileWrite(pHandle->ulInode, pHandle->o.ullFileOffset, &ulLenWrote, pBuffer);
         }
 
         if(ret == 0)
         {
             REDASSERT(ulLenWrote <= ulLength);
 
-            pHandle->ullOffset += ulLenWrote;
+            pHandle->o.ullFileOffset += ulLenWrote;
         }
 
         PosixLeave();
@@ -1774,8 +1951,8 @@ int64_t red_lseek(
                 /*  Seek from the current file offset.
                 */
                 case RED_SEEK_CUR:
-                    REDASSERT(pHandle->ullOffset <= (uint64_t)INT64_MAX);
-                    llFrom = (int64_t)pHandle->ullOffset;
+                    REDASSERT(pHandle->o.ullFileOffset <= (uint64_t)INT64_MAX);
+                    llFrom = (int64_t)pHandle->o.ullFileOffset;
                     break;
 
                 /*  Seek from the end of the file.
@@ -1824,7 +2001,7 @@ int64_t red_lseek(
                 }
                 else
                 {
-                    pHandle->ullOffset = (uint64_t)llNewOffset;
+                    pHandle->o.ullFileOffset = (uint64_t)llNewOffset;
                     llReturn = llNewOffset;
                 }
             }
@@ -2074,19 +2251,7 @@ REDDIRENT *red_readdir(
 
         if(ret == 0)
         {
-            uint32_t ulDirPosition;
-
-            /*  To save memory, the directory position is stored in the same
-                location as the file offset.  This would be a bit cleaner using
-                a union, but MISRA-C:2012 Rule 19.2 disallows unions.
-            */
-            REDASSERT(pDirStream->ullOffset <= UINT32_MAX);
-            ulDirPosition = (uint32_t)pDirStream->ullOffset;
-
-            ret = RedCoreDirRead(pDirStream->ulInode, &ulDirPosition, pDirStream->dirent.d_name, &pDirStream->dirent.d_ino);
-
-            pDirStream->ullOffset = ulDirPosition;
-
+            ret = RedCoreDirRead(pDirStream->ulInode, &pDirStream->o.ulDirPosition, pDirStream->dirent.d_name, &pDirStream->dirent.d_ino);
             if(ret == 0)
             {
                 /*  POSIX extension: return stat information with the dirent.
@@ -2143,7 +2308,7 @@ void red_rewinddir(
     {
         if(DirStreamIsValid(pDirStream))
         {
-            pDirStream->ullOffset = 0U;
+            pDirStream->o.ulDirPosition = 0U;
         }
 
         PosixLeave();
@@ -2810,7 +2975,7 @@ static REDSTATUS PathStartingPoint(
         }
       #endif
 
-        if(pbVolNum != NULL)
+        if((ret == 0) && (pbVolNum != NULL))
         {
             *pbVolNum = bVolNum;
         }
@@ -3267,48 +3432,26 @@ static void FildesUnpack(
 static bool DirStreamIsValid(
     const REDDIR   *pDirStream)
 {
-    bool            fRet = true;
+    bool            fRet;
 
-    if(pDirStream == NULL)
+    if(!PTR_IS_ARRAY_ELEMENT(pDirStream, gaHandle, ARRAY_SIZE(gaHandle), sizeof(gaHandle[0U])))
     {
+        /*  pDirStream is not a pointer to one of our handles.
+        */
+        fRet = false;
+    }
+    else if(    (pDirStream->ulInode == INODE_INVALID)
+             || (pDirStream->bVolNum >= REDCONF_VOLUME_COUNT)
+             || ((pDirStream->bFlags & HFLAG_DIRECTORY) == 0U))
+    {
+        /*  The handle must be in use, have a valid volume number, and be a
+            directory handle.
+        */
         fRet = false;
     }
     else
     {
-        uint16_t uHandleIdx;
-
-        /*  pDirStream should be a pointer to one of the handles.
-
-            A good compiler will optimize this loop into a bounds check and an
-            alignment check.
-        */
-        for(uHandleIdx = 0U; uHandleIdx < REDCONF_HANDLE_COUNT; uHandleIdx++)
-        {
-            if(pDirStream == &gaHandle[uHandleIdx])
-            {
-                break;
-            }
-        }
-
-        if(uHandleIdx < REDCONF_HANDLE_COUNT)
-        {
-            /*  The handle must be in use, have a valid volume number, and be a
-                directory handle.
-            */
-            if(    (pDirStream->ulInode == INODE_INVALID)
-                || (pDirStream->bVolNum >= REDCONF_VOLUME_COUNT)
-                || ((pDirStream->bFlags & HFLAG_DIRECTORY) == 0U))
-            {
-                fRet = false;
-            }
-        }
-        else
-        {
-            /*  pDirStream is a non-null pointer, but it is not a pointer to one
-                of our handles.
-            */
-            fRet = false;
-        }
+        fRet = true;
     }
 
     return fRet;

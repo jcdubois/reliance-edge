@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -77,10 +77,10 @@ int main(
             }
         }
 
-        iErr = red_format(pszVolume);
+        iErr = RedTestFmtOptionsPreserve(pszVolume);
         if(iErr == -1)
         {
-            fprintf(stderr, "Unexpected error %d from red_format()\n", (int)red_errno);
+            fprintf(stderr, "Unexpected error %d from RedTestFmtOptionsPreserve()\n", (int)red_errno);
             exit(red_errno);
         }
 

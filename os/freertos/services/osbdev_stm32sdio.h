@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -57,9 +57,9 @@
 
     See ::CheckStatus().
 
-    NOTE: Datalight has not observed a scenario where BSP_SD_GetStatus()
-    returns SD_TRANSFER_BUSY after a transfer command returns successfully.
-    Set SD_STATUS_TIMEOUT to 0U to skip checking BSP_SD_GetStatus().
+    NOTE: We have not observed a scenario where BSP_SD_GetStatus() returns
+    SD_TRANSFER_BUSY after a transfer command returns successfully.  Set
+    SD_STATUS_TIMEOUT to 0U to skip checking BSP_SD_GetStatus().
 */
 #define SD_STATUS_TIMEOUT (100000U)
 
@@ -94,7 +94,7 @@ static REDSTATUS DiskOpen(
     uint8_t         bVolNum,
     BDEVOPENMODE    mode)
 {
-    REDSTATUS       ret = 0;
+    REDSTATUS       ret;
     static bool     fSdInitted = false;
 
     (void)mode;
@@ -119,22 +119,7 @@ static REDSTATUS DiskOpen(
     }
     else
     {
-        HAL_SD_CardInfoTypedef  sdCardInfo = {{0}};
-
-        BSP_SD_GetCardInfo(&sdCardInfo);
-
-        /*  Note: the actual card block size is sdCardInfo.CardBlockSize,
-            but the interface only supports a 512 byte block size. Further,
-            one card has been observed to report a 1024-byte block size,
-            but it worked fine with a 512-byte Reliance Edge ulSectorSize.
-
-            Shifting sdCardInfo.CardCapacity does a unit conversion from bytes
-            to 512-byte sectors.
-        */
-        if(!VOLUME_SECTOR_GEOMETRY_IS_VALID(bVolNum, 512U, sdCardInfo.CardCapacity >> 9U))
-        {
-            ret = -RED_EINVAL;
-        }
+        ret = 0;
     }
 
     return ret;
@@ -154,6 +139,41 @@ static REDSTATUS DiskClose(
     uint8_t     bVolNum)
 {
     (void)bVolNum;
+    return 0;
+}
+
+
+/** @brief Return the disk geometry.
+
+    @param bVolNum  The volume number of the volume whose block device geometry
+                    is being queried.
+    @param pInfo    On successful return, populated with the geometry of the
+                    block device.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    A disk I/O or driver error occurred.
+*/
+static REDSTATUS DiskGetGeometry(
+    uint8_t                 bVolNum,
+    BDEVINFO               *pInfo)
+{
+    HAL_SD_CardInfoTypedef  sdCardInfo = {{0}};
+
+    BSP_SD_GetCardInfo(&sdCardInfo);
+
+    /*  Note: the actual card block size is sdCardInfo.CardBlockSize, but the
+        interface only supports a 512 byte block size. Further, one card has
+        been observed to report a 1024-byte block size, but it worked fine with
+        a 512-byte Reliance Edge ulSectorSize.
+
+        Shifting sdCardInfo.CardCapacity does a unit conversion from bytes to
+        512-byte sectors.
+    */
+    pInfo->ulSectorSize = 512U;
+    pInfo->ullSectorCount = sdCardInfo.CardCapacity >> 9U;
+
     return 0;
 }
 
@@ -178,12 +198,12 @@ static REDSTATUS DiskRead(
     void       *pBuffer)
 {
     REDSTATUS   redStat = 0;
-    uint32_t    ulSectorSize = gaRedVolConf[bVolNum].ulSectorSize;
+    uint32_t    ulSectorSize = gaRedBdevInfo[bVolNum].ulSectorSize;
     uint8_t     bSdError;
 
-    if(IS_UINT32_ALIGNED_PTR(pBuffer))
+    if(IS_ALIGNED_PTR(pBuffer, sizeof(uint32_t)))
     {
-        bSdError = BSP_SD_ReadBlocks_DMA(CAST_UINT32_PTR(pBuffer), ullSectorStart * ulSectorSize, ulSectorSize, ulSectorCount);
+        bSdError = BSP_SD_ReadBlocks_DMA(pBuffer, ullSectorStart * ulSectorSize, ulSectorSize, ulSectorCount);
 
         if(bSdError != MSD_OK)
         {
@@ -217,7 +237,7 @@ static REDSTATUS DiskRead(
 
             if(redStat == 0)
             {
-                uint8_t *pbBuffer = CAST_VOID_PTR_TO_UINT8_PTR(pBuffer);
+                uint8_t *pbBuffer = pBuffer;
 
                 RedMemCpy(&pbBuffer[ulSectorIdx * ulSectorSize], gaulAlignedBuffer, ulSectorSize);
             }
@@ -254,12 +274,12 @@ static REDSTATUS DiskWrite(
     const void *pBuffer)
 {
     REDSTATUS   redStat = 0;
-    uint32_t    ulSectorSize = gaRedVolConf[bVolNum].ulSectorSize;
+    uint32_t    ulSectorSize = gaRedBdevInfo[bVolNum].ulSectorSize;
     uint8_t     bSdError;
 
-    if(IS_UINT32_ALIGNED_PTR(pBuffer))
+    if(IS_ALIGNED_PTR(pBuffer, sizeof(uint32_t)))
     {
-        bSdError = BSP_SD_WriteBlocks_DMA(CAST_UINT32_PTR(CAST_AWAY_CONST(void, pBuffer)), ullSectorStart * ulSectorSize,
+        bSdError = BSP_SD_WriteBlocks_DMA(CAST_AWAY_CONST(void, pBuffer), ullSectorStart * ulSectorSize,
                                           ulSectorSize, ulSectorCount);
 
         if(bSdError != MSD_OK)
@@ -279,7 +299,7 @@ static REDSTATUS DiskWrite(
 
         for(ulSectorIdx = 0U; ulSectorIdx < ulSectorCount; ulSectorIdx++)
         {
-            const uint8_t *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+            const uint8_t *pbBuffer = pBuffer;
 
             RedMemCpy(gaulAlignedBuffer, &pbBuffer[ulSectorIdx * ulSectorSize], ulSectorSize);
 

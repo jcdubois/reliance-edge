@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -34,9 +34,7 @@ void RedSignOn(void)
 {
   #if REDCONF_OUTPUT == 1
 
-    /*  Use RedOsOutputString() instead of RedPrintf() to avoid using variadic
-        arguments, since this function is called from the driver and cannot use
-        functions that violate MISRA-C:2012.
+    /*  Use RedOsOutputString() instead of RedPrintf() to reduce code size.
     */
     RedOsOutputString(RED_PRODUCT_NAME "\n");
     RedOsOutputString(RED_PRODUCT_EDITION "\n");

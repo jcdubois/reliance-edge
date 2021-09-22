@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 
 #if REDCONF_OUTPUT == 1
 
-#include <redosdeviations.h>
+#include <stdio.h>
 
 
 /** @brief Write a string to a user-visible output location.
@@ -52,13 +52,13 @@ void RedOsOutputString(
 
         while(pszString[ulIdx] != '\0')
         {
-            OUTPUT_CHARACTER(pszString[ulIdx]);
+            (void)putchar(pszString[ulIdx]);
 
             /*  Serial output often requires a \r to print newlines correctly.
             */
             if(pszString[ulIdx] == '\n')
             {
-                OUTPUT_CHARACTER('\r');
+                (void)putchar('\r');
             }
 
             ulIdx++;

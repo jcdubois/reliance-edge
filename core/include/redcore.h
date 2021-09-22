@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
 
 
 #include <redstat.h>
+#include <redformat.h>
 #include <redvolume.h>
 #include "rednodes.h"
 #include "redcoremacs.h"
@@ -41,6 +42,7 @@
 #define META_SIG_INODE      (0x444F4E49U)   /* 'INOD' */
 #define META_SIG_DINDIR     (0x494C4244U)   /* 'DBLI' */
 #define META_SIG_INDIR      (0x49444E49U)   /* 'INDI' */
+#define META_SIG_DIRECTORY  (0x44524944U)   /* 'DIRD' */
 
 
 REDSTATUS RedIoRead(uint8_t bVolNum, uint32_t ulBlockStart, uint32_t ulBlockCount, void *pBuffer);
@@ -54,45 +56,50 @@ REDSTATUS RedIoFlush(uint8_t bVolNum);
     contents of the corresponding block on disk); or, when passed into
     RedBufferGet(), indicates that the buffer should be marked dirty.
 */
-#define BFLAG_DIRTY         ((uint16_t) 0x0001U)
+#define BFLAG_DIRTY             ((uint16_t) 0x0001U)
 
 /** Tells RedBufferGet() that the buffer is for a newly allocated block, and its
     contents should be zeroed instead of being read from disk.  Always used in
     combination with BFLAG_DIRTY.
 */
-#define BFLAG_NEW           ((uint16_t) 0x0002U)
+#define BFLAG_NEW               ((uint16_t) 0x0002U)
 
 /** Indicates that a block buffer is a master block (MASTERBLOCK) metadata node.
 */
-#define BFLAG_META_MASTER   ((uint16_t)(0x0004U | BFLAG_META))
+#define BFLAG_META_MASTER       ((uint16_t)(0x0004U | BFLAG_META))
 
 /** Indicates that a block buffer is an imap (IMAPNODE) metadata node.
 */
-#define BFLAG_META_IMAP     ((uint16_t)(0x0008U | BFLAG_META))
+#define BFLAG_META_IMAP         ((uint16_t)(0x0008U | BFLAG_META))
 
 /** Indicates that a block buffer is an inode (INODE) metadata node.
 */
-#define BFLAG_META_INODE    ((uint16_t)(0x0010U | BFLAG_META))
+#define BFLAG_META_INODE        ((uint16_t)(0x0010U | BFLAG_META))
 
 /** Indicates that a block buffer is an indirect (INDIR) metadata node.
 */
-#define BFLAG_META_INDIR    ((uint16_t)(0x0020U | BFLAG_META))
+#define BFLAG_META_INDIR        ((uint16_t)(0x0020U | BFLAG_META))
 
 /** Indicates that a block buffer is a double indirect (DINDIR) metadata node.
 */
-#define BFLAG_META_DINDIR   ((uint16_t)(0x0040U | BFLAG_META))
+#define BFLAG_META_DINDIR       ((uint16_t)(0x0040U | BFLAG_META))
+
+/** Indicates that a block buffer is a directory data block.  Only used with
+    on-disk layouts where directory blocks have metadata headers.
+*/
+#define BFLAG_META_DIRECTORY    ((uint16_t)(0x0080U | BFLAG_META))
 
 /** Indicates that a block buffer is a metadata node.  Callers of RedBufferGet()
     should not use this flag; instead, use one of the BFLAG_META_* flags.
 */
-#define BFLAG_META          ((uint16_t) 0x8000U)
+#define BFLAG_META              ((uint16_t) 0x8000U)
 
 
 void RedBufferInit(void);
 REDSTATUS RedBufferGet(uint32_t ulBlock, uint16_t uFlags, void **ppBuffer);
 void RedBufferPut(const void *pBuffer);
 #if REDCONF_READ_ONLY == 0
-REDSTATUS RedBufferFlush(uint32_t ulBlockStart, uint32_t ulBlockCount);
+REDSTATUS RedBufferFlushRange(uint32_t ulBlockStart, uint32_t ulBlockCount);
 void RedBufferDirty(const void *pBuffer);
 void RedBufferBranch(const void *pBuffer, uint32_t ulBlockNew);
 #if (REDCONF_API_POSIX == 1) || FORMAT_SUPPORTED
@@ -100,6 +107,10 @@ void RedBufferDiscard(const void *pBuffer);
 #endif
 #endif
 REDSTATUS RedBufferDiscardRange(uint32_t ulBlockStart, uint32_t ulBlockCount);
+REDSTATUS RedBufferReadRange(uint32_t ulBlockStart, uint32_t ulBlockCount, uint8_t *pbDataBuffer);
+#if REDCONF_READ_ONLY == 0
+REDSTATUS RedBufferWriteRange(uint32_t ulBlockStart, uint32_t ulBlockCount, const uint8_t *pbDataBuffer);
+#endif
 
 
 /** @brief Allocation state of a block.
@@ -121,12 +132,18 @@ REDSTATUS RedImapBlockState(uint32_t ulBlock, ALLOCSTATE *pState);
 
 #if REDCONF_IMAP_INLINE == 1
 REDSTATUS RedImapIBlockGet(uint8_t bMR, uint32_t ulBlock, bool *pfAllocated);
+#if REDCONF_READ_ONLY == 0
 REDSTATUS RedImapIBlockSet(uint32_t ulBlock, bool fAllocated);
+REDSTATUS RedImapIBlockFindFree(uint32_t ulBlock, uint32_t *pulFreeBlock);
+#endif
 #endif
 
 #if REDCONF_IMAP_EXTERNAL == 1
 REDSTATUS RedImapEBlockGet(uint8_t bMR, uint32_t ulBlock, bool *pfAllocated);
+#if REDCONF_READ_ONLY == 0
 REDSTATUS RedImapEBlockSet(uint32_t ulBlock, bool fAllocated);
+REDSTATUS RedImapEBlockFindFree(uint32_t ulBlock, uint32_t *pulFreeBlock);
+#endif
 uint32_t RedImapNodeBlock(uint8_t bMR, uint32_t ulImapNode);
 #endif
 
@@ -155,7 +172,7 @@ typedef struct
     uint8_t    *pbData;         /**< Pointer to the data block buffer. */
 
     /*  All the members below this point are part of the seek coordinates; see
-        RedInodeDataSeek().
+        SeekInode().
     */
     uint32_t    ulLogicalBlock; /**< Logical block offset into the inode. */
   #if DINDIR_POINTERS > 0U
@@ -193,7 +210,6 @@ REDSTATUS RedInodeBranch(CINODE *pInode);
 REDSTATUS RedInodeCreate(CINODE *pInode, uint32_t ulPInode, uint16_t uMode);
 #endif
 #if DELETE_SUPPORTED
-REDSTATUS RedInodeDelete(CINODE *pInode);
 REDSTATUS RedInodeLinkDec(CINODE *pInode);
 #endif
 #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX == 1)
@@ -208,10 +224,12 @@ void RedInodePutDindir(CINODE *pInode);
 void RedInodePutIndir(CINODE *pInode);
 #endif
 void RedInodePutData(CINODE *pInode);
-#if ((REDCONF_READ_ONLY == 0) && ((REDCONF_API_POSIX == 1) || FORMAT_SUPPORTED)) || (REDCONF_CHECKER == 1)
+#if REDCONF_CHECKER == 1
 REDSTATUS RedInodeIsFree(uint32_t ulInode, bool *pfFree);
 #endif
+#if REDCONF_CHECKER == 1
 REDSTATUS RedInodeBitGet(uint8_t bMR, uint32_t ulInode, uint8_t bWhich, bool *pfAllocated);
+#endif
 
 REDSTATUS RedInodeDataRead(CINODE *pInode, uint64_t ullStart, uint32_t *pulLen, void *pBuffer);
 #if REDCONF_READ_ONLY == 0
@@ -221,7 +239,6 @@ REDSTATUS RedInodeDataTruncate(CINODE *pInode, uint64_t ullSize);
 #endif
 #endif
 REDSTATUS RedInodeDataSeekAndRead(CINODE *pInode, uint32_t ulBlock);
-REDSTATUS RedInodeDataSeek(CINODE *pInode, uint32_t ulBlock);
 
 #if REDCONF_API_POSIX == 1
 #if REDCONF_READ_ONLY == 0
@@ -239,17 +256,21 @@ REDSTATUS RedDirEntryRename(CINODE *pSrcPInode, const char *pszSrcName, CINODE *
 #endif
 #endif
 
+REDSTATUS RedVolInitGeometry(void);
 REDSTATUS RedVolMount(uint32_t ulFlags);
+#if REDCONF_CHECKER == 1
 REDSTATUS RedVolMountMaster(void);
 REDSTATUS RedVolMountMetaroot(uint32_t ulFlags);
+#endif
 #if REDCONF_READ_ONLY == 0
 REDSTATUS RedVolTransact(void);
+REDSTATUS RedVolRollback(void);
 #endif
 void RedVolCriticalError(const char *pszFileName, uint32_t ulLineNum);
 REDSTATUS RedVolSeqNumIncrement(uint8_t bVolNum);
 
 #if FORMAT_SUPPORTED
-REDSTATUS RedVolFormat(void);
+REDSTATUS RedVolFormat(const REDFMTOPT *pOptions);
 #endif
 
 

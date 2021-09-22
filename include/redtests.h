@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include <redtypes.h>
 #include "redtestutils.h"
 #include "redver.h"
+#include "redformat.h"
 
 /*  This macro is only defined by the error injection project.
 */
@@ -196,9 +197,8 @@ int RedFseTestStart(const FSETESTPARAM *pParam);
 #if FSIOTEST_SUPPORTED
 typedef enum
 {
-    TESTFS_RELEDGE, /* Datalight Reliance Edge */
+    TESTFS_RELEDGE, /* Tuxera Reliance Edge */
     TESTFS_FATFS,   /* ChaN's FatFs */
-    TESTFS_FATSL,   /* FreeRTOS+FAT SL */
     TESTFS_IPOSIX   /* INTEGRITY POSIX */
 } TESTFS;
 
@@ -289,12 +289,21 @@ typedef struct
     uint32_t    ulMaxFileSize;  /**< --file-size */
     uint32_t    ulMaxOpSize;    /**< --buffer-size */
     uint32_t    ulIterations;   /**< --iterations */
+    bool        fNoCleanup;     /**< --no-cleanup */
     uint32_t    ulSeed;         /**< --seed */
 } MVSTRESSTESTPARAM;
 
 PARAMSTATUS MultiVolStressTestParseParams(int argc, char *argv[], MVSTRESSTESTPARAM *pParam);
 void MultiVolStressTestDefaultParams(MVSTRESSTESTPARAM *pParam);
 int MultiVolStressTestStart(const MVSTRESSTESTPARAM *pParam);
+#endif
+
+
+/*  Not tests, but utilities needed by test entry points.
+*/
+#if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_FORMAT == 1)
+int32_t RedTestFmtOptionsGet(const char *pszVolume, REDFMTOPT *pFmtOpt);
+int32_t RedTestFmtOptionsPreserve(const char *pszVolume);
 #endif
 
 

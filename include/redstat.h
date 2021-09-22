@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
     more information.
 */
 /** @file
+    @brief Defines macros and types for red_stat() and red_statvfs().
 */
 #ifndef REDSTAT_H
 #define REDSTAT_H
@@ -87,6 +88,7 @@ typedef struct
     uint32_t    f_namemax;  /**< Maximum filename length. */
     uint64_t    f_maxfsize; /**< Maximum file size (POSIX extension). */
     uint32_t    f_dev;      /**< Volume number (POSIX extension). */
+    uint32_t    f_diskver;  /**< On-disk layout verison (POSIX extension).  Values defined in redver.h. */
 } REDSTATFS;
 
 

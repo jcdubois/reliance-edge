@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -27,12 +27,145 @@
 */
 #include <redfs.h>
 #include <redcore.h>
+#include <redbdev.h>
 
 
+/*  Minimum number of blocks needed for metadata on any volume: the master
+    block (1), the two metaroots (2), and one doubly-allocated inode (2),
+    resulting in 1 + 2 + 2 = 5.
+*/
+#define MINIMUM_METADATA_BLOCKS (5U)
+
+
+#if REDCONF_CHECKER == 0
+static REDSTATUS RedVolMountMaster(void);
+static REDSTATUS RedVolMountMetaroot(uint32_t ulFlags);
+#endif
 static bool MetarootIsValid(METAROOT *pMR, bool *pfSectorCRCIsValid);
 #ifdef REDCONF_ENDIAN_SWAP
 static void MetaRootEndianSwap(METAROOT *pMetaRoot);
 #endif
+#if REDCONF_OUTPUT == 1
+static void OutputCriticalError(const char *pszFileName, uint32_t ulLineNum);
+static uint32_t U32toStr(char *pcBuffer, uint32_t ulBufferLen, uint32_t ulNum);
+#endif
+
+
+/** @brief Populate and validate the volume geometry.
+
+    The sector size and/or count will be queried from the block device if
+    the volume configuration specifies that one or both are to be detected
+    automatically.  Otherwise, the values in the volume configuration are used.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL Volume geometry is invalid.
+*/
+REDSTATUS RedVolInitGeometry(void)
+{
+    REDSTATUS       ret = 0;
+    const BDEVINFO *pBdevInfo = &gaRedBdevInfo[gbRedVolNum];
+
+    if(    (pBdevInfo->ulSectorSize < SECTOR_SIZE_MIN)
+        || ((REDCONF_BLOCK_SIZE % pBdevInfo->ulSectorSize) != 0U)
+        || ((UINT64_MAX - gpRedVolConf->ullSectorOffset) < pBdevInfo->ullSectorCount)) /* SectorOffset + SectorCount must not wrap */
+    {
+        REDERROR();
+        ret = -RED_EINVAL;
+    }
+
+    if(ret == 0)
+    {
+        gpRedVolume->bBlockSectorShift = 0U;
+        while((pBdevInfo->ulSectorSize << gpRedVolume->bBlockSectorShift) < REDCONF_BLOCK_SIZE)
+        {
+            gpRedVolume->bBlockSectorShift++;
+        }
+
+        /*  This should always be true since the block size is confirmed to
+            be a power of two (checked at compile time) and above we ensured
+            that (REDCONF_BLOCK_SIZE % pVolConf->ulSectorSize) == 0.
+        */
+        REDASSERT((pBdevInfo->ulSectorSize << gpRedVolume->bBlockSectorShift) == REDCONF_BLOCK_SIZE);
+
+        gpRedVolume->ulBlockCount = (uint32_t)(pBdevInfo->ullSectorCount >> gpRedVolume->bBlockSectorShift);
+
+        if(gpRedVolume->ulBlockCount < MINIMUM_METADATA_BLOCKS)
+        {
+            ret = -RED_EINVAL;
+        }
+        else
+        {
+            /*  To understand the following code, note that the fixed-
+                location metadata is located at the start of the disk, in
+                the following order:
+
+                - Master block (1 block)
+                - Metaroots (2 blocks)
+                - External imap blocks (variable * 2 blocks)
+                - Inode blocks (pVolConf->ulInodeCount * 2 blocks)
+            */
+
+            /*  The imap needs bits for all inode and allocable blocks.  If
+                that bitmap will fit into the metaroot, the inline imap is
+                used and there are no imap nodes on disk.  The minus 3 is
+                there since the imap does not include bits for the master
+                block or metaroots.
+            */
+            gpRedCoreVol->fImapInline = (gpRedVolume->ulBlockCount - 3U) <= METAROOT_ENTRIES;
+
+            if(gpRedCoreVol->fImapInline)
+            {
+              #if REDCONF_IMAP_INLINE == 1
+                gpRedCoreVol->ulInodeTableStartBN = 3U;
+              #else
+                REDERROR();
+                ret = -RED_EINVAL;
+              #endif
+            }
+            else
+            {
+              #if REDCONF_IMAP_EXTERNAL == 1
+                gpRedCoreVol->ulImapStartBN = 3U;
+
+                /*  The imap does not include bits for itself, so add two to
+                    the number of imap entries for the two blocks of each
+                    imap node.  This allows us to divide up the remaining
+                    space, making sure to round up so all data blocks are
+                    covered.
+                */
+                gpRedCoreVol->ulImapNodeCount =
+                    ((gpRedVolume->ulBlockCount - 3U) + ((IMAPNODE_ENTRIES + 2U) - 1U)) / (IMAPNODE_ENTRIES + 2U);
+
+                gpRedCoreVol->ulInodeTableStartBN = gpRedCoreVol->ulImapStartBN + (gpRedCoreVol->ulImapNodeCount * 2U);
+              #else
+                REDERROR();
+                ret = -RED_EINVAL;
+              #endif
+            }
+        }
+    }
+
+    if(ret == 0)
+    {
+        gpRedCoreVol->ulFirstAllocableBN = gpRedCoreVol->ulInodeTableStartBN + (gpRedVolConf->ulInodeCount * 2U);
+
+        if(gpRedCoreVol->ulFirstAllocableBN > gpRedVolume->ulBlockCount)
+        {
+            /*  We can get here if there is not enough space for the number
+                of configured inodes.
+            */
+            ret = -RED_EINVAL;
+        }
+        else
+        {
+            gpRedVolume->ulBlocksAllocable = gpRedVolume->ulBlockCount - gpRedCoreVol->ulFirstAllocableBN;
+        }
+    }
+
+    return ret;
+}
 
 
 /** @brief Mount a file system volume.
@@ -65,11 +198,16 @@ REDSTATUS RedVolMount(
         }
       #endif
 
-        ret = RedOsBDevOpen(gbRedVolNum, mode);
+        ret = RedBDevOpen(gbRedVolNum, mode);
 
         if(ret == 0)
         {
-            ret = RedVolMountMaster();
+            ret = RedVolInitGeometry();
+
+            if(ret == 0)
+            {
+                ret = RedVolMountMaster();
+            }
 
             if(ret == 0)
             {
@@ -82,7 +220,7 @@ REDSTATUS RedVolMount(
                     confusion that could be caused by stale or corrupt metadata.
                 */
                 (void)RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
-                (void)RedOsBDevClose(gbRedVolNum);
+                (void)RedBDevClose(gbRedVolNum);
             }
         }
     }
@@ -99,6 +237,9 @@ REDSTATUS RedVolMount(
     @retval -RED_EIO    Master block missing, corrupt, or inconsistent with the
                         compile-time driver settings.
 */
+#if REDCONF_CHECKER == 0
+static
+#endif
 REDSTATUS RedVolMountMaster(void)
 {
     REDSTATUS       ret;
@@ -107,7 +248,7 @@ REDSTATUS RedVolMountMaster(void)
     /*  Read the master block, to ensure that the disk was formatted with
         Reliance Edge.
     */
-    ret = RedBufferGet(BLOCK_NUM_MASTER, BFLAG_META_MASTER, CAST_VOID_PTR_PTR(&pMB));
+    ret = RedBufferGet(BLOCK_NUM_MASTER, BFLAG_META_MASTER, (void **)&pMB);
 
     if(ret == 0)
     {
@@ -116,7 +257,7 @@ REDSTATUS RedVolMountMaster(void)
             mistake: either the driver settings are wrong, or the disk needs
             to be reformatted.
         */
-        if(    (pMB->ulVersion != RED_DISK_LAYOUT_VERSION)
+        if(    !RED_DISK_LAYOUT_IS_SUPPORTED(pMB->ulVersion)
             || (pMB->ulInodeCount != gpRedVolConf->ulInodeCount)
             || (pMB->ulBlockCount != gpRedVolume->ulBlockCount)
             || (pMB->uMaxNameLen != REDCONF_NAME_MAX)
@@ -149,6 +290,11 @@ REDSTATUS RedVolMountMaster(void)
                 not want to re-buffer the master block.
             */
             gpRedVolume->ullSequence = pMB->hdr.ullSequence;
+
+            /*  Save the on-disk layout version so we know how to interpret
+                the metadata.
+            */
+            gpRedCoreVol->ulVersion = pMB->ulVersion;
         }
 
         RedBufferPut(pMB);
@@ -169,6 +315,9 @@ REDSTATUS RedVolMountMaster(void)
     @retval 0           Operation was successful.
     @retval -RED_EIO    Both metaroots are missing or corrupt.
 */
+#if REDCONF_CHECKER == 0
+static
+#endif
 REDSTATUS RedVolMountMetaroot(
     uint32_t    ulFlags)
 {
@@ -325,7 +474,8 @@ static bool MetarootIsValid(
     }
     else
     {
-        const uint8_t  *pbMR = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pMR);
+        const uint8_t  *pbMR = (const uint8_t *)pMR;
+        uint32_t        ulSectorSize = gaRedBdevInfo[gbRedVolNum].ulSectorSize;
         uint32_t        ulSectorCRC = pMR->ulSectorCRC;
         uint32_t        ulCRC;
 
@@ -338,17 +488,14 @@ static bool MetarootIsValid(
         */
         pMR->ulSectorCRC = 0U;
 
-        ulCRC = RedCrc32Update(0U, &pbMR[8U], gpRedVolConf->ulSectorSize - 8U);
+        ulCRC = RedCrc32Update(0U, &pbMR[8U], ulSectorSize - 8U);
 
         fRet = ulCRC == ulSectorCRC;
         *pfSectorCRCIsValid = fRet;
 
         if(fRet)
         {
-            if(gpRedVolConf->ulSectorSize < REDCONF_BLOCK_SIZE)
-            {
-                ulCRC = RedCrc32Update(ulCRC, &pbMR[gpRedVolConf->ulSectorSize], REDCONF_BLOCK_SIZE - gpRedVolConf->ulSectorSize);
-            }
+            ulCRC = RedCrc32Update(ulCRC, &pbMR[ulSectorSize], REDCONF_BLOCK_SIZE - ulSectorSize);
 
           #ifdef REDCONF_ENDIAN_SWAP
             ulCRC = RedRev32(ulCRC);
@@ -381,7 +528,7 @@ REDSTATUS RedVolTransact(void)
         gpRedMR->ulFreeBlocks += gpRedCoreVol->ulAlmostFreeBlocks;
         gpRedCoreVol->ulAlmostFreeBlocks = 0U;
 
-        ret = RedBufferFlush(0U, gpRedVolume->ulBlockCount);
+        ret = RedBufferFlushRange(0U, gpRedVolume->ulBlockCount);
 
         if(ret == 0)
         {
@@ -393,7 +540,8 @@ REDSTATUS RedVolTransact(void)
 
         if(ret == 0)
         {
-            const uint8_t  *pbMR = CAST_VOID_PTR_TO_CONST_UINT8_PTR(gpRedMR);
+            const uint8_t  *pbMR = (const uint8_t *)gpRedMR;
+            uint32_t        ulSectorSize = gaRedBdevInfo[gbRedVolNum].ulSectorSize;
             uint32_t        ulSectorCRC;
 
           #ifdef REDCONF_ENDIAN_SWAP
@@ -402,11 +550,11 @@ REDSTATUS RedVolTransact(void)
 
             gpRedMR->ulSectorCRC = 0U;
 
-            ulSectorCRC = RedCrc32Update(0U, &pbMR[8U], gpRedVolConf->ulSectorSize - 8U);
+            ulSectorCRC = RedCrc32Update(0U, &pbMR[8U], ulSectorSize - 8U);
 
-            if(gpRedVolConf->ulSectorSize < REDCONF_BLOCK_SIZE)
+            if(ulSectorSize < REDCONF_BLOCK_SIZE)
             {
-                gpRedMR->hdr.ulCRC = RedCrc32Update(ulSectorCRC, &pbMR[gpRedVolConf->ulSectorSize], REDCONF_BLOCK_SIZE - gpRedVolConf->ulSectorSize);
+                gpRedMR->hdr.ulCRC = RedCrc32Update(ulSectorCRC, &pbMR[ulSectorSize], REDCONF_BLOCK_SIZE - ulSectorSize);
             }
             else
             {
@@ -466,7 +614,49 @@ REDSTATUS RedVolTransact(void)
 
     return ret;
 }
-#endif
+
+
+/** @brief Rollback to the previous transaction point.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    An I/O error occurred.
+*/
+REDSTATUS RedVolRollback(void)
+{
+    REDSTATUS ret = 0;
+
+    REDASSERT(gpRedVolume->fMounted); /* Should be checked by caller. */
+    REDASSERT(!gpRedVolume->fReadOnly); /* Should be checked by caller. */
+
+    if(gpRedCoreVol->fBranched)
+    {
+        ret = RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
+
+        if(ret == 0)
+        {
+            ret = RedVolMountMaster();
+        }
+
+        if(ret == 0)
+        {
+            uint32_t ulFlags = RED_MOUNT_DEFAULT;
+
+            ret = RedVolMountMetaroot(ulFlags);
+        }
+
+        if(ret == 0)
+        {
+            gpRedCoreVol->fBranched = false;
+        }
+
+        CRITICAL_ASSERT(ret == 0);
+    }
+
+    return ret;
+}
+#endif /* REDCONF_READ_ONLY == 0 */
 
 
 #ifdef REDCONF_ENDIAN_SWAP
@@ -479,6 +669,9 @@ static void MetaRootEndianSwap(
     }
     else
     {
+        pMetaRoot->hdr.ulSignature = RedRev32(pMetaRoot->hdr.ulSignature);
+        pMetaRoot->hdr.ullSequence = RedRev64(pMetaRoot->hdr.ullSequence);
+
         pMetaRoot->ulSectorCRC = RedRev32(pMetaRoot->ulSectorCRC);
         pMetaRoot->ulFreeBlocks = RedRev32(pMetaRoot->ulFreeBlocks);
       #if REDCONF_API_POSIX == 1
@@ -499,17 +692,13 @@ void RedVolCriticalError(
     const char *pszFileName,
     uint32_t    ulLineNum)
 {
+    /*  Unused in some configurations
+    */
+    (void)pszFileName;
+    (void)ulLineNum;
+
   #if REDCONF_OUTPUT == 1
-  #if REDCONF_READ_ONLY == 0
-    if(!gpRedVolume->fReadOnly)
-    {
-        RedOsOutputString("Critical file system error in Reliance Edge, setting volume to READONLY\n");
-    }
-    else
-  #endif
-    {
-        RedOsOutputString("Critical file system error in Reliance Edge (volume already READONLY)\n");
-    }
+    OutputCriticalError(pszFileName, ulLineNum);
   #endif
 
   #if REDCONF_READ_ONLY == 0
@@ -518,9 +707,6 @@ void RedVolCriticalError(
 
   #if REDCONF_ASSERTS == 1
     RedOsAssertFail(pszFileName, ulLineNum);
-  #else
-    (void)pszFileName;
-    (void)ulLineNum;
   #endif
 }
 
@@ -566,3 +752,144 @@ REDSTATUS RedVolSeqNumIncrement(
     return ret;
 }
 
+
+#if REDCONF_OUTPUT == 1
+/** @brief Output a critical error message.
+
+    @param pszFileName  The file in which the error occurred.
+    @param ulLineNum    The line number at which the error occurred.
+*/
+static void OutputCriticalError(
+    const char *pszFileName,
+    uint32_t    ulLineNum)
+{
+  #if REDCONF_READ_ONLY == 0
+    if(!gpRedVolume->fReadOnly)
+    {
+        RedOsOutputString("Critical file system error in Reliance Edge, setting volume to READONLY\n");
+    }
+    else
+  #endif
+    {
+        RedOsOutputString("Critical file system error in Reliance Edge (volume already READONLY)\n");
+    }
+
+    /*  Print @p pszFileName and @p ulLineNum.
+    */
+    if(pszFileName == NULL)
+    {
+        REDERROR();
+    }
+    else
+    {
+        #define FILENAME_MAX_LEN 24U /* 2x the longest core source file name */
+        #define LINENUM_MAX_LEN 10U /* Big enough for UINT32_MAX */
+        #define PREFIX_LEN (sizeof(szPrefix) - 1U)
+        #define OUTBUFSIZE (PREFIX_LEN + FILENAME_MAX_LEN + 1U /* ':' */ + LINENUM_MAX_LEN + 2U /* "\n\0" */)
+
+        const char  szPrefix[] = "Reliance Edge critical error at ";
+        char        szBuffer[OUTBUFSIZE];
+        const char *pszBaseName;
+        uint32_t    ulNameLen;
+        uint32_t    ulIdx;
+
+        /*  Many compilers include the path in __FILE__ strings.  szBuffer
+            isn't large enough to print paths, so find the basename.
+        */
+        pszBaseName = pszFileName;
+        ulIdx = 0U;
+        while(pszFileName[ulIdx] != '\0')
+        {
+            /*  Currently it's safe to assume that the host system uses slashes
+                as path separators.  On Unix-like hosts, a backslash is also a
+                legal file name character, but we don't need to worry about that
+                edge case, since only the last slash matters, and _our_ file
+                names will never include backslashes.
+            */
+            if((pszFileName[ulIdx] == '/') || (pszFileName[ulIdx] == '\\'))
+            {
+                pszBaseName = &pszFileName[ulIdx + 1U];
+            }
+
+            ulIdx++;
+        }
+
+        ulNameLen = RedStrLen(pszBaseName);
+        ulNameLen = REDMIN(ulNameLen, FILENAME_MAX_LEN); /* Paranoia */
+
+        /*  We never use printf() in the core, for the sake of portability
+            and minimal code size.  Instead, craft a string buffer for
+            RedOsOutputString().
+
+            E.g., "Reliance Edge critical error at file.c:123\n"
+        */
+        RedMemCpy(szBuffer, szPrefix, PREFIX_LEN);
+        ulIdx = PREFIX_LEN;
+        RedMemCpy(&szBuffer[ulIdx], pszBaseName, ulNameLen);
+        ulIdx += ulNameLen;
+        szBuffer[ulIdx] = ':';
+        ulIdx++;
+        ulIdx += U32toStr(&szBuffer[ulIdx], sizeof(szBuffer) - ulIdx, ulLineNum);
+        szBuffer[ulIdx] = '\n';
+        ulIdx++;
+        szBuffer[ulIdx] = '\0';
+
+        RedOsOutputString(szBuffer);
+    }
+}
+
+
+/** @brief Output a decimal string representation of a uint32_t value.
+
+    @note This function does _not_ null-terminate the output buffer.
+
+    @param pcBuffer     The output buffer.
+    @param ulBufferLen  The size of @p pcBuffer.
+    @param ulNum        The unsigned 32-bit number.
+
+    @return The number of bytes written to @p pcBuffer.
+*/
+static uint32_t U32toStr(
+    char       *pcBuffer,
+    uint32_t    ulBufferLen,
+    uint32_t    ulNum)
+{
+    uint32_t    ulBufferIdx = 0U;
+
+    if((pcBuffer == NULL) || (ulBufferLen == 0U))
+    {
+        REDERROR();
+    }
+    else
+    {
+        const char  szDigits[] = "0123456789";
+        char        ach[10U]; /* Big enough for a uint32_t in radix 10 */
+        uint32_t    ulDigits = 0U;
+        uint32_t    ulRemaining = ulNum;
+
+        /*  Compute the digit characters, from least significant to most
+            significant.  For example, if @p ulNum is 123, the ach array
+            is populated with "321".
+        */
+        do
+        {
+            ach[ulDigits] = szDigits[ulRemaining % 10U];
+            ulRemaining /= 10U;
+            ulDigits++;
+        }
+        while(ulRemaining > 0U);
+
+        /*  Copy and reverse the string.  For example, if the ach array
+            contains "321", then "123" is written to @p pcBuffer.
+        */
+        while((ulDigits > 0U) && (ulBufferIdx < ulBufferLen))
+        {
+            ulDigits--;
+            pcBuffer[ulBufferIdx] = ach[ulDigits];
+            ulBufferIdx++;
+        }
+    }
+
+    return ulBufferIdx;
+}
+#endif /* REDCONF_OUTPUT == 1 */

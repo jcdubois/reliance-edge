@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,14 +29,14 @@
 
 // Private helpers
 static QString outputLine(const QString &macroName, const QString &value,
-                          const QString &comment = QString::null);
+                          const QString &comment = QString());
 static QString outputIfNotBlank(const QString &macroName, const QString &value,
-                                const QString &comment = QString::null);
+                                const QString &comment = QString());
 static qint32 getMinCompatVer();
 template<typename T>
 static void parseToSetting(const QString &text, Setting<T> *setting,
                           QStringList &notFound, QStringList &notParsed,
-                          const QString &humanName = QString::null);
+                          const QString &humanName = QString());
 static void parseMemSetting(const QString &text, StrSetting *setting);
 static void parseToEnabledDisabledSetting(const QString &text,
                                           StrSetting *setting,
@@ -44,11 +44,11 @@ static void parseToEnabledDisabledSetting(const QString &text,
                                           const QString &strFalse,
                                           QStringList &notFound,
                                           QStringList &notParsed,
-                                          const QString &humanName = QString::null);
+                                          const QString &humanName = QString());
 static void parseToTrSetting(const QString &text, BoolSetting *setting);
 static QString findValue(const QString &text, const QString &macroName, bool &found);
 
-// Constant strings to save some malloc's and code duplicaiton
+// Constant strings to save some malloc's and code duplication
 const QString str1 = QString("1"),
               str0 = QString("0"),
               strU = QString("U");
@@ -71,7 +71,7 @@ static inline void addIntSetting(QString &outputString, IntSetting *intSetting)
 
 // Add a transaction point to the mask at the end of outputString
 // if trSetting is set to true.
-// Trasnaction point will be exluded without evaluating trSetting
+// Trasnaction point will be excluded without evaluating trSetting
 // if override is set to false. Evaluated normally if override
 // is true or unspecified.
 static inline void addTrIfChecked(QString &outputString, BoolSetting *trSetting,
@@ -441,7 +441,7 @@ void AllSettings::CheckError(SettingBase *setting,
             break;
         default:
             // Nothing to append.
-            // Default clause included to supress GCC's Wswitch.
+            // Default clause included to suppress GCC's Wswitch.
             break;
     }
 }
@@ -697,7 +697,7 @@ QString findValue(const QString &text, const QString &macroName, bool &found)
     found = rem.hasMatch() && rem.lastCapturedIndex() > 0;
     if(!found)
     {
-        return QString::null;
+        return QString();
     }
     return rem.captured(1);
 }

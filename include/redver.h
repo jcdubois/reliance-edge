@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,6 +24,13 @@
 */
 /** @file
     @brief Macros for version numbers, build number, and product information.
+
+    RED_VERSION_SUFFIX, if defined, is a custom string that will be suffixed to
+    the version number in the sign-on, replacing the build number.  It should
+    only be defined by Tuxera when building a binary delivery: it should not be
+    defined when building an SDK.  Since binary deliveries are always
+    commercially licensed, defining RED_VERSION_SUFFIX also changes the default
+    RED_KIT value.
 */
 #ifndef REDVER_H
 #define REDVER_H
@@ -33,7 +40,7 @@
 
     <!-- This macro is updated automatically: do not edit! -->
 */
-#define RED_BUILD_NUMBER "852"
+#define RED_BUILD_NUMBER "897"
 
 #define RED_KIT_GPL         0U  /* Open source GPL kit. */
 #define RED_KIT_COMMERCIAL  1U  /* Commercially-licensed kit. */
@@ -43,25 +50,68 @@
 
     <!-- This macro is updated automatically: do not edit! -->
 */
+#ifdef RED_VERSION_SUFFIX
+#define RED_KIT RED_KIT_COMMERCIAL
+#else
 #define RED_KIT RED_KIT_GPL
+#endif
 
 
 /** @brief Version number to display in output.
 */
-#define RED_VERSION "v2.4"
+#define RED_VERSION "v2.x"
 
 /** @brief Version number in hex.
 
     The most significant byte is the major version number, etc.
 */
-#define RED_VERSION_VAL 0x02040000U
+#define RED_VERSION_VAL 0x02FF0000U
 
-/** @brief On-disk version number.
 
-    This is incremented only when the on-disk layout is updated in such a way
-    which is incompatible with previously released versions of the file system.
+/** @brief Original Reliance Edge on-disk layout.
+
+    Used by Reliance Edge v0.9 through v2.5.x.  Depending on configuration,
+    might no longer be used by default, but can still be used via explicit
+    format options.
 */
-#define RED_DISK_LAYOUT_VERSION 1U
+#define RED_DISK_LAYOUT_ORIGINAL 1U
+
+/** @brief Reliance Edge on-disk layout with directory data CRCs.
+
+    New on-disk layout which adds a metadata header (signature, CRC, and
+    sequence number) to the directory data blocks.
+*/
+#define RED_DISK_LAYOUT_DIRCRC 4U
+
+/** @brief Whether an on-disk layout version is supported by the driver.
+*/
+#define RED_DISK_LAYOUT_IS_SUPPORTED(ver) (((ver) == RED_DISK_LAYOUT_ORIGINAL) || ((ver) == RED_DISK_LAYOUT_DIRCRC))
+
+/** @brief Default on-disk version number.
+
+    The on-disk layout is incremented only when the on-disk layout is updated in
+    such a way which is incompatible with previously released versions of the
+    file system.
+
+    Version history:
+    - 1: Reliance Edge v0.9 through v2.5.x
+    - 2: Custom version of Reliance Edge for a specific customer
+    - 3: Custom version of Reliance Edge for a specific customer
+    - 4: Reliance Edge v2.6+
+
+    The default on-disk version number depends on the file system configuration:
+    - Directory blocks don't exist with the FSE API, so there's no advantage
+      to using the new layout.  Keep using the old layout for backwards
+      compatibility.
+    - The new on-disk layout has a lower maximum name length.  If the
+      #REDCONF_NAME_MAX value is only legal with the original layout, then use
+      it by default.  Doing this avoids breaking existing configurations.
+*/
+#if (REDCONF_API_FSE == 1) || (REDCONF_NAME_MAX > (REDCONF_BLOCK_SIZE - 4U /* Inode */ - 16U /* NodeHeader */))
+#define RED_DISK_LAYOUT_VERSION RED_DISK_LAYOUT_ORIGINAL
+#else
+#define RED_DISK_LAYOUT_VERSION RED_DISK_LAYOUT_DIRCRC
+#endif
 
 
 /** @brief Base name of the file system product.
@@ -71,8 +121,8 @@
 
 /*  Specifies whether the product is in alpha stage, beta stage, or neither.
 */
-#if 0
-  #if 0
+#if 1
+  #if 1
     #define ALPHABETA   " (Alpha)"
   #else
     #define ALPHABETA   " (Beta)"
@@ -81,14 +131,23 @@
   #define ALPHABETA     ""
 #endif
 
+/*  Version suffix defaults to the SDK build number, but it can be otherwise
+    defined for binary deliveries where the build number is not meaningful.
+*/
+#ifdef RED_VERSION_SUFFIX
+#define VERSION_SUFFIX_STR "(" RED_VERSION_SUFFIX ")"
+#else
+#define VERSION_SUFFIX_STR "Build " RED_BUILD_NUMBER
+#endif
+
 /** @brief Full product name and version.
 */
-#define RED_PRODUCT_NAME "Datalight " RED_PRODUCT_BASE_NAME " " RED_VERSION " Build " RED_BUILD_NUMBER ALPHABETA
+#define RED_PRODUCT_NAME "Tuxera " RED_PRODUCT_BASE_NAME " " RED_VERSION " " VERSION_SUFFIX_STR ALPHABETA
 
 
 /** @brief Product copyright.
 */
-#define RED_PRODUCT_LEGAL "Copyright (c) 2014-2019 Datalight, Inc.  All Rights Reserved Worldwide."
+#define RED_PRODUCT_LEGAL "Copyright (c) 2014-2021 Tuxera US Inc.  All Rights Reserved Worldwide."
 
 
 /** @brief Product patents.

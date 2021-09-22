@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #endif
 
 #include <redstat.h>
+#include <redformat.h>
 
 
 REDSTATUS RedCoreInit(void);
@@ -41,7 +42,7 @@ REDSTATUS RedCoreUninit(void);
 REDSTATUS RedCoreVolSetCurrent(uint8_t bVolNum);
 
 #if FORMAT_SUPPORTED
-REDSTATUS RedCoreVolFormat(void);
+REDSTATUS RedCoreVolFormat(const REDFMTOPT *pOptions);
 #endif
 #if REDCONF_CHECKER == 1
 REDSTATUS RedCoreVolCheck(FILE *pOutputFile, char *pszOutputBuffer, uint32_t nOutputBufferSize);
@@ -50,6 +51,7 @@ REDSTATUS RedCoreVolMount(uint32_t ulFlags);
 REDSTATUS RedCoreVolUnmount(void);
 #if REDCONF_READ_ONLY == 0
 REDSTATUS RedCoreVolTransact(void);
+REDSTATUS RedCoreVolRollback(void);
 #endif
 #if REDCONF_API_POSIX == 1
 REDSTATUS RedCoreVolStat(REDSTATFS *pStatFS);

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,8 +33,8 @@ Application::Application(int &argc, char *argv[])
       output(NULL),
       input(NULL),
       messageBox(NULL),
-      currHeaderPath(QString::null),
-      currCodefilePath(QString::null)
+      currHeaderPath(QString()),
+      currCodefilePath(QString())
 {
 }
 
@@ -99,7 +99,7 @@ void Application::TrySave()
 
 void Application::TrySaveAs()
 {
-    output->TrySave(QString::null, QString::null);
+    output->TrySave(QString(), QString());
 
     // Result handled by output_results
 }
@@ -150,8 +150,8 @@ void Application::input_results(Input::Result r, const QString & headerPath, con
     {
         configWindow->SetMemRbtnSelection(ConfigWindow::Customize);
 
-        Q_ASSERT(headerPath != QString::null);
-        Q_ASSERT(codefilePath != QString::null);
+        Q_ASSERT(headerPath != QString());
+        Q_ASSERT(codefilePath != QString());
         currHeaderPath = headerPath;
         currCodefilePath = codefilePath;
 

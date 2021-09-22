@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,13 +28,7 @@
 #include <redfs.h>
 #include <redcoreapi.h>
 #include <redcore.h>
-
-
-/*  Minimum number of blocks needed for metadata on any volume: the master
-    block (1), the two metaroots (2), and one doubly-allocated inode (2),
-    resulting in 1 + 2 + 2 = 5.
-*/
-#define MINIMUM_METADATA_BLOCKS (5U)
+#include <redbdev.h>
 
 
 #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX == 1)
@@ -58,12 +52,12 @@ static REDSTATUS CoreFileTruncate(uint32_t ulInode, uint64_t ullSize);
 
 
 VOLUME gaRedVolume[REDCONF_VOLUME_COUNT];
-static COREVOLUME gaCoreVol[REDCONF_VOLUME_COUNT];
+COREVOLUME gaRedCoreVol[REDCONF_VOLUME_COUNT];
 
 const VOLCONF  * CONST_IF_ONE_VOLUME gpRedVolConf = &gaRedVolConf[0U];
 VOLUME         * CONST_IF_ONE_VOLUME gpRedVolume = &gaRedVolume[0U];
-COREVOLUME     * CONST_IF_ONE_VOLUME gpRedCoreVol = &gaCoreVol[0U];
-METAROOT       *gpRedMR = &gaCoreVol[0U].aMR[0U];
+COREVOLUME     * CONST_IF_ONE_VOLUME gpRedCoreVol = &gaRedCoreVol[0U];
+METAROOT       *gpRedMR = &gaRedCoreVol[0U].aMR[0U];
 
 CONST_IF_ONE_VOLUME uint8_t gbRedVolNum;
 
@@ -102,26 +96,23 @@ REDSTATUS RedCoreInit(void)
   #endif
 
     RedMemSet(gaRedVolume, 0U, sizeof(gaRedVolume));
-    RedMemSet(gaCoreVol, 0U, sizeof(gaCoreVol));
+    RedMemSet(gaRedCoreVol, 0U, sizeof(gaRedCoreVol));
 
     RedBufferInit();
 
     for(bVolNum = 0U; bVolNum < REDCONF_VOLUME_COUNT; bVolNum++)
     {
-        VOLUME         *pVol = &gaRedVolume[bVolNum];
-        COREVOLUME     *pCoreVol = &gaCoreVol[bVolNum];
         const VOLCONF  *pVolConf = &gaRedVolConf[bVolNum];
 
-        if(    (pVolConf->ulSectorSize < SECTOR_SIZE_MIN)
-            || ((REDCONF_BLOCK_SIZE % pVolConf->ulSectorSize) != 0U)
-            || ((UINT64_MAX - pVolConf->ullSectorOffset) < pVolConf->ullSectorCount) /* SectorOffset + SectorCount must not wrap */
-            || (pVolConf->ulInodeCount == 0U))
+        if(pVolConf->ulInodeCount == 0U)
         {
+            REDERROR();
             ret = -RED_EINVAL;
         }
       #if REDCONF_API_POSIX == 1
         else if(pVolConf->pszPathPrefix == NULL)
         {
+            REDERROR();
             ret = -RED_EINVAL;
         }
         else
@@ -138,111 +129,24 @@ REDSTATUS RedCoreInit(void)
 
                 if(RedStrCmp(pVolConf->pszPathPrefix, pszCmpPathPrefix) == 0)
                 {
+                    REDERROR();
                     ret = -RED_EINVAL;
                     break;
                 }
             }
           #endif
         }
-      #endif
-
-        if(ret == 0)
-        {
-            pVol->bBlockSectorShift = 0U;
-            while((pVolConf->ulSectorSize << pVol->bBlockSectorShift) < REDCONF_BLOCK_SIZE)
-            {
-                pVol->bBlockSectorShift++;
-            }
-
-            /*  This should always be true since the block size is confirmed to
-                be a power of two (checked at compile time) and above we ensured
-                that (REDCONF_BLOCK_SIZE % pVolConf->ulSectorSize) == 0.
-            */
-            REDASSERT((pVolConf->ulSectorSize << pVol->bBlockSectorShift) == REDCONF_BLOCK_SIZE);
-
-            pVol->ulBlockCount = (uint32_t)(pVolConf->ullSectorCount >> pVol->bBlockSectorShift);
-
-            if(pVol->ulBlockCount < MINIMUM_METADATA_BLOCKS)
-            {
-                ret = -RED_EINVAL;
-            }
-            else
-            {
-              #if REDCONF_READ_ONLY == 0
-                pVol->ulTransMask = REDCONF_TRANSACT_DEFAULT;
-              #endif
-
-                pVol->ullMaxInodeSize = INODE_SIZE_MAX;
-
-                /*  To understand the following code, note that the fixed-
-                    location metadata is located at the start of the disk, in
-                    the following order:
-
-                    - Master block (1 block)
-                    - Metaroots (2 blocks)
-                    - External imap blocks (variable * 2 blocks)
-                    - Inode blocks (pVolConf->ulInodeCount * 2 blocks)
-                */
-
-                /*  The imap needs bits for all inode and allocable blocks.  If
-                    that bitmap will fit into the metaroot, the inline imap is
-                    used and there are no imap nodes on disk.  The minus 3 is
-                    there since the imap does not include bits for the master
-                    block or metaroots.
-                */
-                pCoreVol->fImapInline = (pVol->ulBlockCount - 3U) <= METAROOT_ENTRIES;
-
-                if(pCoreVol->fImapInline)
-                {
-                  #if REDCONF_IMAP_INLINE == 1
-                    pCoreVol->ulInodeTableStartBN = 3U;
-                  #else
-                    ret = -RED_EINVAL;
-                  #endif
-                }
-                else
-                {
-                  #if REDCONF_IMAP_EXTERNAL == 1
-                    pCoreVol->ulImapStartBN = 3U;
-
-                    /*  The imap does not include bits for itself, so add two to
-                        the number of imap entries for the two blocks of each
-                        imap node.  This allows us to divide up the remaining
-                        space, making sure to round up so all data blocks are
-                        covered.
-                    */
-                    pCoreVol->ulImapNodeCount =
-                        ((pVol->ulBlockCount - 3U) + ((IMAPNODE_ENTRIES + 2U) - 1U)) / (IMAPNODE_ENTRIES + 2U);
-
-                    pCoreVol->ulInodeTableStartBN = pCoreVol->ulImapStartBN + (pCoreVol->ulImapNodeCount * 2U);
-                  #else
-                    ret = -RED_EINVAL;
-                  #endif
-                }
-            }
-        }
-
-        if(ret == 0)
-        {
-            pCoreVol->ulFirstAllocableBN = pCoreVol->ulInodeTableStartBN + (pVolConf->ulInodeCount * 2U);
-
-            if(pCoreVol->ulFirstAllocableBN > pVol->ulBlockCount)
-            {
-                /*  We can get here if there is not enough space for the number
-                    of configured inodes.
-                */
-                ret = -RED_EINVAL;
-            }
-            else
-            {
-                pVol->ulBlocksAllocable = pVol->ulBlockCount - pCoreVol->ulFirstAllocableBN;
-            }
-        }
+      #endif /* REDCONF_API_POSIX == 1 */
 
         if(ret != 0)
         {
             break;
         }
+
+      #if REDCONF_READ_ONLY == 0
+        gaRedVolume[bVolNum].ulTransMask = REDCONF_TRANSACT_DEFAULT;
+      #endif
+        gaRedVolume[bVolNum].ullMaxInodeSize = INODE_SIZE_MAX;
     }
 
     /*  Make sure the configured endianness is correct.
@@ -260,6 +164,7 @@ REDSTATUS RedCoreInit(void)
         if(abBytes[0U] != 0x00U)
       #endif
         {
+            REDERROR();
             ret = -RED_EINVAL;
         }
     }
@@ -343,7 +248,7 @@ REDSTATUS RedCoreVolSetCurrent(
         gbRedVolNum = bVolNum;
         gpRedVolConf = &gaRedVolConf[bVolNum];
         gpRedVolume = &gaRedVolume[bVolNum];
-        gpRedCoreVol = &gaCoreVol[bVolNum];
+        gpRedCoreVol = &gaRedCoreVol[bVolNum];
         gpRedMR = &gpRedCoreVol->aMR[gpRedCoreVol->bCurMR];
       #endif
 
@@ -362,15 +267,19 @@ REDSTATUS RedCoreVolSetCurrent(
 
     An error is returned if the volume is mounted.
 
+    @param pOptions Format options.  May be `NULL`, in which case the default
+                    values are used for the options.
+
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
     @retval -RED_EBUSY  Volume is mounted.
     @retval -RED_EIO    A disk I/O error occurred.
 */
-REDSTATUS RedCoreVolFormat(void)
+REDSTATUS RedCoreVolFormat(
+    const REDFMTOPT *pOptions)
 {
-    return RedVolFormat();
+    return RedVolFormat(pOptions);
 }
 #endif /* FORMAT_SUPPORTED */
 
@@ -433,7 +342,7 @@ REDSTATUS RedCoreVolUnmount(void)
 
     if(ret == 0)
     {
-        ret = RedOsBDevClose(gbRedVolNum);
+        ret = RedBDevClose(gbRedVolNum);
     }
 
     if(ret == 0)
@@ -478,6 +387,40 @@ REDSTATUS RedCoreVolTransact(void)
     else
     {
         ret = RedVolTransact();
+    }
+
+    return ret;
+}
+
+
+/** @brief Rollback to a previous transaction point.
+
+    Reliance Edge is a transactional file system.  All modifications, of both
+    metadata and filedata, are initially working state.  This call discards the
+    current working state and reverts to the last committed state.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL The volume is not mounted.
+    @retval -RED_EIO    An I/O error occurred.
+    @retval -RED_EROFS  The file system volume is read-only.
+*/
+REDSTATUS RedCoreVolRollback(void)
+{
+    REDSTATUS ret;
+
+    if(!gpRedVolume->fMounted)
+    {
+        ret = -RED_EINVAL;
+    }
+    else if(gpRedVolume->fReadOnly)
+    {
+        ret = -RED_EROFS;
+    }
+    else
+    {
+        ret = RedVolRollback();
     }
 
     return ret;
@@ -531,6 +474,7 @@ REDSTATUS RedCoreVolStat(
         pStatFS->f_namemax = REDCONF_NAME_MAX;
         pStatFS->f_maxfsize = INODE_SIZE_MAX;
         pStatFS->f_dev = gbRedVolNum;
+        pStatFS->f_diskver = gpRedCoreVol->ulVersion;
 
         ret = 0;
     }
@@ -663,7 +607,7 @@ REDSTATUS RedCoreTransMaskGet(
     @retval -RED_ENOTDIR        @p ulPInode is not a directory.
     @retval -RED_EBADF          @p ulPInode is not a valid inode.
     @retval -RED_ENOSPC         There is not enough space on the volume to
-                                createthe new directory entry; or the directory
+                                create the new directory entry; or the directory
                                 is full.
     @retval -RED_ENFILE         No available inode slots.
     @retval -RED_ENAMETOOLONG   @p pszName is too long.
@@ -1018,7 +962,7 @@ static REDSTATUS CoreLink(
     @retval -RED_ENOSPC         The file system does not have enough space to
                                 modify the parent directory to perform the
                                 deletion.
-    @retval -RED_ENOTEMPTY      The inode refered to by @p pszName is a
+    @retval -RED_ENOTEMPTY      The inode referred to by @p pszName is a
                                 directory which is not empty.
     @retval -RED_EROFS          The requested unlink requires writing in a
                                 directory on a read-only file system.
@@ -1081,7 +1025,7 @@ REDSTATUS RedCoreUnlink(
     @retval -RED_ENOSPC         The file system does not have enough space to
                                 modify the parent directory to perform the
                                 deletion.
-    @retval -RED_ENOTEMPTY      The inode refered to by @p pszName is a
+    @retval -RED_ENOTEMPTY      The inode referred to by @p pszName is a
                                 directory which is not empty.
     @retval -RED_EROFS          The requested unlink requires writing in a
                                 directory on a read-only file system.
@@ -1255,7 +1199,8 @@ REDSTATUS RedCoreLookup(
     @retval -RED_EEXIST         #REDCONF_RENAME_POSIX is false and the
                                 destination name exists.
     @retval -RED_EINVAL         The volume is not mounted; @p pszSrcName is
-                                `NULL`; or @p pszDstName is `NULL`.
+                                `NULL`; or @p pszDstName is `NULL`; or the
+                                rename is cyclic.
     @retval -RED_EIO            A disk I/O error occurred.
     @retval -RED_EISDIR         The destination name exists and is a directory,
                                 and the source name is a non-directory.
@@ -1333,6 +1278,7 @@ REDSTATUS RedCoreRename(
                                 @p ulDstPInode is not a valid inode number.
     @retval -RED_EEXIST         #REDCONF_RENAME_POSIX is false and the
                                 destination name exists.
+    @retval -RED_EINVAL         The rename is cyclic.
     @retval -RED_EIO            A disk I/O error occurred.
     @retval -RED_EISDIR         The destination name exists and is a directory,
                                 and the source name is a non-directory.

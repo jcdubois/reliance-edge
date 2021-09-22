@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,14 +28,14 @@
     These functions are intended to be used in portable test code, which cannot
     assume the standard I/O functions will be available.  Similar to their ANSI
     C counterparts, these functions allow formatting text strings and (if the
-    configuration allows it) outputing formatted text.  The latter ability
+    configuration allows it) outputting formatted text.  The latter ability
     relies on the RedOsOutputString() OS service function.
 
     Do *not* use these functions in code which can safely assume the standard
     I/O functions are available (e.g., in host tools code).
 
-    Do *not* use these functions from within the file system driver.  These
-    functions use variable arguments and thus are not MISRA-C:2012 compliant.
+    Do *not* use these functions from within the file system driver.  They are
+    not linked into the driver due to their relatively large size.
 */
 #include <redfs.h>
 #include <redtestutils.h>
@@ -45,9 +45,9 @@
 
 /** @brief Maximum number of bytes of output supported by RedPrintf().
 
-    Typically only Datalight code uses these functions, and that could should be
-    written to respect this limit, so it should not normally be necessary to
-    adjust this value.
+    Typically only code authored by Tuxera uses these functions, and that could
+    should be written to respect this limit, so it should not normally be
+    necessary to adjust this value.
 */
 #define OUTPUT_BUFFER_SIZE 256U
 
@@ -294,7 +294,7 @@ int32_t RedSNPrintf(
 
     '*' is supported to specify variable length field widths.
 
-    Hexidecimal numbers are always displayed in upper case.  Formatting codes
+    Hexadecimal numbers are always displayed in upper case.  Formatting codes
     which specifically request upper case (e.g., "%lX") are not supported.
 
     Unsupported behaviors:
@@ -955,10 +955,10 @@ static uint32_t LtoA(
     }
     else
     {
-        char                ach[12U]; /* big enough for a int32_t in base 10 */
-        uint32_t            ulDigits = 0U;
-        uint32_t            ulNum;
-        bool                fSign;
+        char        ach[12U]; /* big enough for a int32_t in base 10 */
+        uint32_t    ulDigits = 0U;
+        uint32_t    ulNum;
+        bool        fSign;
 
         if(lNum < 0)
         {
@@ -1025,10 +1025,10 @@ static uint32_t LLtoA(
     }
     else
     {
-        char                ach[12U]; /* big enough for a int32_t in base 10 */
-        uint32_t            ulDigits = 0U;
-        uint64_t            ullNum;
-        bool                fSign;
+        char        ach[21U]; /* big enough for a int64_t in base 10 */
+        uint32_t    ulDigits = 0U;
+        uint64_t    ullNum;
+        bool        fSign;
 
         if(llNum < 0)
         {
@@ -1157,7 +1157,6 @@ static uint32_t ULLtoA(
     }
     else
     {
-
         char        ach[21U];   /* Big enough for a uint64_t in radix 10 */
         uint32_t    ulDigits = 0U;
         uint64_t    ullNumericVal = ullNum;

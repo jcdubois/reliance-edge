@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,6 +22,24 @@
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
 */
+/** @file
+*/
+#ifndef REDBDEV_H
+#define REDBDEV_H
 
-/*  This file intentionally left blank */
+
+extern BDEVINFO gaRedBdevInfo[REDCONF_VOLUME_COUNT];
+
+
+REDSTATUS RedBDevOpen(uint8_t bVolNum, BDEVOPENMODE mode);
+REDSTATUS RedBDevClose(uint8_t bVolNum);
+REDSTATUS RedBDevRead(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, void *pBuffer);
+
+#if REDCONF_READ_ONLY == 0
+REDSTATUS RedBDevWrite(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, const void *pBuffer);
+REDSTATUS RedBDevFlush(uint8_t bVolNum);
+#endif
+
+
+#endif
 

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@
 
 ///
 /// \brief  The Setting class is used to represent settings displayed by the UI.
-///         This class controls validity checking and value storage; derrived
+///         This class controls validity checking and value storage; derived
 ///         classes may also control user interface interaction.
 ///
 /// \tparam T   The type which this setting holds

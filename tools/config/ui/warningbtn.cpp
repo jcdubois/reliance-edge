@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -98,7 +98,7 @@ void WarningBtn::Set(Validity v, QString msg)
 }
 
 // Check for mouse-over events and show the current message
-// in a tooltip when one arrises.
+// in a tooltip when one arises.
 bool WarningBtn::event(QEvent *e)
 {
     if(e->type() == QEvent::Enter)
@@ -109,7 +109,7 @@ bool WarningBtn::event(QEvent *e)
             QPoint toolTipPoint = mapToGlobal(mapFromParent(pos()));
 
             // Put the tooltip a bit below the WarningBtn to avoid
-            // mouse interferance.
+            // mouse interference.
             toolTipPoint.ry() += height() / 2;
 
             QToolTip::showText(toolTipPoint,

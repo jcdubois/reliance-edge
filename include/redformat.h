@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -23,16 +23,33 @@
     more information.
 */
 /** @file
-    @brief Macros to encapsulate MISRA C:2012 deviations in OS-specific code.
+    @brief Defines the format option structure.
 */
-#ifndef REDOSDEVIATIONS_H
-#define REDOSDEVIATIONS_H
+#ifndef REDFORMAT_H
+#define REDFORMAT_H
 
 
-/*  No deviations -- Linux is a host OS, and is not intended to comply with
-    MISRA C:2012.
+#include "redexclude.h" /* for FORMAT_SUPPORTED */
+
+
+#if FORMAT_SUPPORTED
+/** @brief Configurable format parameters for red_format2().
+
+    @note Members may be added to this structure in the future.  Applications
+          should zero-initialize the entire structure to ensure forward
+          compatibility.
 */
-
-
+typedef struct
+{
+    /** Which on-disk layout version to create.  Supported values:
+        - #RED_DISK_LAYOUT_ORIGINAL: layout for Reliance Edge v0.9 through v2.5.x
+        - #RED_DISK_LAYOUT_DIRCRC: updated v2.6 layout with directory data CRCs.
+        - #RED_DISK_LAYOUT_VERSION: alias for the default on-disk layout.
+        - `0`: alternate alias for the default on-disk layout.
+    */
+    uint32_t ulVersion;
+} REDFMTOPT;
 #endif
 
+
+#endif /* REDFORMAT_H */

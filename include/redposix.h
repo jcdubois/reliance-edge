@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -51,6 +51,7 @@ extern "C" {
 #include "redapimacs.h"
 #include "rederrno.h"
 #include "redstat.h"
+#include "redformat.h"
 
 /** Open for reading only. */
 #define RED_O_RDONLY    0x00000001U
@@ -138,11 +139,14 @@ int32_t red_uninit(void);
 int32_t red_mount(const char *pszVolume);
 int32_t red_mount2(const char *pszVolume, uint32_t ulFlags);
 int32_t red_umount(const char *pszVolume);
+int32_t red_umount2(const char *pszVolume, uint32_t ulFlags);
 #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX_FORMAT == 1)
 int32_t red_format(const char *pszVolume);
+int32_t red_format2(const char *pszVolume, const REDFMTOPT *pOptions);
 #endif
 #if REDCONF_READ_ONLY == 0
 int32_t red_transact(const char *pszVolume);
+int32_t red_rollback(const char *pszVolume);
 #endif
 #if REDCONF_READ_ONLY == 0
 int32_t red_settransmask(const char *pszVolume, uint32_t ulEventMask);

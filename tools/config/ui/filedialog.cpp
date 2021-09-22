@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2019 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -108,7 +108,7 @@ QString FileDialog::showFileDialog()
 
     if(!exec())
     {
-        return QString::null;
+        return QString();
     }
 
     defaultDir = directory().absolutePath();
@@ -118,7 +118,7 @@ QString FileDialog::showFileDialog()
     Q_ASSERT(strList.count() == 1); //Should give us one file
     if(strList.count() == 0) //But just in case it doesn't
     {
-        return QString::null;
+        return QString();
     }
 
     return strList.at(0);
