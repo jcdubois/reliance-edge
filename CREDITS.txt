@@ -14,7 +14,15 @@ missing if the contributor does not use GitHub.
 Credits
 -------
 
+John Burger (JohnBurger)
+Went the "extra mile" while evaluating the INTEGRITY port.  Reported numerous
+issues, including: two separate bugs in the implementation of the sector offset
+feature; several documentation issues; and a Makefile issue.  Also made several
+suggestions for future enhancement of Reliance Edge.
+
 Jean-Christophe Dubois (jcdubois)
-Created a user-space Linux port of Reliance Edge and ported the open-source host
-tools (including the formatter and image builder) to Linux.
+Created a user-space Linux port of Reliance Edge, ported the open-source host
+tools (including the formatter and image builder) to Linux, and created a FUSE
+(File System in User Space) implementation for Reliance Edge.  Also implemented
+the red_rollback() and RedFseRollback() APIs.
 

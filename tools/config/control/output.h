@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -88,7 +88,16 @@ public:
     ///         The result of this operation is emitted by the signal
     ///         Output::results.
     ///
-    void TrySave();
+    /// \param codefilePath The path at which to save the .c configuration file.
+    ///                     If this is null or if an attempt to save the file
+    ///                     with this name fails, save dialogs will be shown.
+    /// \param headerPath   The path at which to save the .h configuration file.
+    ///                     If this is null or if an attempt to save the file
+    ///                     with this name fails, save dialogs will be shown.
+    ///                     This must not be null if codefilePath is not null,
+    ///                     and vice versa.
+    ///
+    void TrySave(const QString & headerPath, const QString & codefilePath);
 
     ///
     /// \brief  Checks for invalid and shows them to the user in a non-blocking
@@ -115,8 +124,14 @@ private:
     // calls are not possible.
     bool isSaving;
 
+    // Used to save parameters from TrySave() for doOutput to use. We do this
+    // instead of passing parameters to doOutput() because doOutput() is also
+    // called by errorDialog_results().
+    QString currHeaderPath;
+    QString currCodefilePath;
+
 signals:
-    void results(Output::Result r);
+    void results(Output::Result r, const QString & headerPath, const QString & codefilePath);
 
 private slots:
     void errorDialog_results(ErrorDialog::Result r);

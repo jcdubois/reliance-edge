@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -28,6 +28,15 @@
 #include <redfs.h>
 #include <redcore.h>
 
+
+/*  Get the buffer flag for an inode's data block.
+*/
+#if REDCONF_API_POSIX == 1
+#define CINODE_DATA_BFLAG(cino) \
+    (((cino)->fDirectory && (gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC)) ? BFLAG_META_DIRECTORY : 0U)
+#else
+#define CINODE_DATA_BFLAG(cino) 0U
+#endif
 
 /*  This value is used to initialize the uIndirEntry and uDindirEntry members of
     the CINODE structure.  After seeking, a value of COORD_ENTRY_INVALID in
@@ -66,6 +75,7 @@ static REDSTATUS TruncDataBlock(const CINODE *pInode, uint32_t *pulBlock, bool f
 #endif
 static REDSTATUS ExpandPrepare(CINODE *pInode);
 #endif
+static REDSTATUS SeekInode(CINODE *pInode, uint32_t ulBlock);
 static void SeekCoord(CINODE *pInode, uint32_t ulBlock);
 static REDSTATUS ReadUnaligned(CINODE *pInode, uint64_t ullStart, uint32_t ulLen, uint8_t *pbBuffer);
 static REDSTATUS ReadAligned(CINODE *pInode, uint32_t ulBlockStart, uint32_t ulBlockCount, uint8_t *pbBuffer);
@@ -122,7 +132,7 @@ REDSTATUS RedInodeDataRead(
     }
     else
     {
-        uint8_t    *pbBuffer = CAST_VOID_PTR_TO_UINT8_PTR(pBuffer);
+        uint8_t    *pbBuffer = pBuffer;
         uint32_t    ulReadIndex = 0U;
         uint32_t    ulLen = *pulLen;
         uint32_t    ulRemaining;
@@ -238,7 +248,7 @@ REDSTATUS RedInodeDataWrite(
     }
     else
     {
-        const uint8_t  *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+        const uint8_t  *pbBuffer = pBuffer;
         uint32_t        ulWriteIndex = 0U;
         uint32_t        ulLen = *pulLen;
         uint32_t        ulRemaining;
@@ -454,7 +464,7 @@ static REDSTATUS Shrink(
       #if REDCONF_INDIRECT_POINTERS > 0U
         while((ret == 0) && (ulTruncBlock < (REDCONF_DIRECT_POINTERS + INODE_INDIR_BLOCKS)))
         {
-            ret = RedInodeDataSeek(pInode, ulTruncBlock);
+            ret = SeekInode(pInode, ulTruncBlock);
 
             if((ret == 0) || (ret == -RED_ENODATA))
             {
@@ -481,7 +491,7 @@ static REDSTATUS Shrink(
       #if DINDIR_POINTERS > 0U
         while((ret == 0) && (ulTruncBlock < INODE_DATA_BLOCKS))
         {
-            ret = RedInodeDataSeek(pInode, ulTruncBlock);
+            ret = SeekInode(pInode, ulTruncBlock);
 
             if((ret == 0) || (ret == -RED_ENODATA))
             {
@@ -499,15 +509,27 @@ static REDSTATUS Shrink(
 
                 if(ret == 0)
                 {
+                    uint32_t ulDataBlocks;
+
                     if(fFreed)
                     {
                         pInode->pInodeBuf->aulEntries[uOrigInodeEntry] = BLOCK_SPARSE;
                     }
 
-                    /*  The next seek will go to the beginning of the next
-                        double indirect.
+                    /*  This is the number of blocks till the end of the double
+                        indirect.
                     */
-                    ulTruncBlock += (DINDIR_DATA_BLOCKS - (uOrigDindirEntry * INDIR_ENTRIES)) - uOrigIndirEntry;
+                    ulDataBlocks = (DINDIR_DATA_BLOCKS - (uOrigDindirEntry * INDIR_ENTRIES)) - uOrigIndirEntry;
+
+                    /*  In some cases, INODE_DATA_BLOCKS is UINT32_MAX, so make
+                        sure we do not increment above that.
+                    */
+                    ulDataBlocks = REDMIN(ulDataBlocks, INODE_DATA_BLOCKS - ulTruncBlock);
+
+                    /*  The next seek will go to the beginning of the next
+                        double indirect (or to the maximum inode size).
+                    */
+                    ulTruncBlock += ulDataBlocks;
                 }
             }
         }
@@ -585,13 +607,20 @@ static REDSTATUS TruncDindir(
         {
             uint32_t ulBlock = pInode->ulLogicalBlock;
             uint16_t uStart = pInode->uDindirEntry; /* pInode->uDindirEntry will change. */
+            uint32_t ulDindirOffset = (uint32_t)pInode->uIndirEntry + ((uint32_t)uStart * INDIR_ENTRIES);
+            uint32_t ulDindirDataBlock = ulBlock - ulDindirOffset;
+            uint32_t ulBlocksTillMax = INODE_DATA_BLOCKS - ulDindirDataBlock;
+            uint32_t ulDindirEntriesMax = (ulBlocksTillMax / INDIR_ENTRIES)
+                /* Rounding up in this way avoids 32-bit overflow. */
+                + (((ulBlocksTillMax % INDIR_ENTRIES) != 0U) ? (uint32_t)1U : (uint32_t)0U);
+            uint16_t uDindirEntries = (uint16_t)REDMIN(INDIR_ENTRIES, ulDindirEntriesMax);
 
-            for(uEntry = uStart; uEntry < INDIR_ENTRIES; uEntry++)
+            for(uEntry = uStart; uEntry < uDindirEntries; uEntry++)
             {
                 /*  Seek so that TruncIndir() has the correct indirect
                     buffer and indirect entry.
                 */
-                ret = RedInodeDataSeek(pInode, ulBlock);
+                ret = SeekInode(pInode, ulBlock);
 
                 if(ret == -RED_ENODATA)
                 {
@@ -652,7 +681,7 @@ static REDSTATUS TruncDindir(
 
 
 #if REDCONF_DIRECT_POINTERS < INODE_ENTRIES
-/** @brief Truncate a indirect.
+/** @brief Truncate an indirect.
 
     @param pInode   A pointer to the cached inode, whose coordinates indicate
                     the truncation boundary.
@@ -702,7 +731,10 @@ static REDSTATUS TruncIndir(
 
         if(ret == 0)
         {
-            for(uEntry = pInode->uIndirEntry; uEntry < INDIR_ENTRIES; uEntry++)
+            uint32_t ulIndirEntriesMax = INODE_DATA_BLOCKS - (pInode->ulLogicalBlock - pInode->uIndirEntry);
+            uint16_t uIndirEntries = (uint16_t)REDMIN(INDIR_ENTRIES, ulIndirEntriesMax);
+
+            for(uEntry = pInode->uIndirEntry; uEntry < uIndirEntries; uEntry++)
             {
                 ret = TruncDataBlock(pInode, &pInode->pIndir->aulEntries[uEntry], fBranch);
 
@@ -825,7 +857,7 @@ static REDSTATUS ExpandPrepare(
 
         if(ulOldSizeByteInBlock != 0U)
         {
-            ret = RedInodeDataSeek(pInode, (uint32_t)(pInode->pInodeBuf->ullSize >> BLOCK_SIZE_P2));
+            ret = SeekInode(pInode, (uint32_t)(pInode->pInodeBuf->ullSize >> BLOCK_SIZE_P2));
 
             if(ret == -RED_ENODATA)
             {
@@ -873,13 +905,13 @@ REDSTATUS RedInodeDataSeekAndRead(
 {
     REDSTATUS   ret;
 
-    ret = RedInodeDataSeek(pInode, ulBlock);
+    ret = SeekInode(pInode, ulBlock);
 
     if((ret == 0) && (pInode->pbData == NULL))
     {
         REDASSERT(pInode->ulDataBlock != BLOCK_SPARSE);
 
-        ret = RedBufferGet(pInode->ulDataBlock, 0U, CAST_VOID_PTR_PTR(&pInode->pbData));
+        ret = RedBufferGet(pInode->ulDataBlock, CINODE_DATA_BFLAG(pInode), (void **)&pInode->pbData);
     }
 
     return ret;
@@ -904,7 +936,7 @@ REDSTATUS RedInodeDataSeekAndRead(
                             mounted cached inode pointer.
     @retval -RED_EIO        A disk I/O error occurred.
 */
-REDSTATUS RedInodeDataSeek(
+static REDSTATUS SeekInode(
     CINODE     *pInode,
     uint32_t    ulBlock)
 {
@@ -931,7 +963,7 @@ REDSTATUS RedInodeDataSeek(
             {
                 if(pInode->pDindir == NULL)
                 {
-                    ret = RedBufferGet(pInode->ulDindirBlock, BFLAG_META_DINDIR, CAST_VOID_PTR_PTR(&pInode->pDindir));
+                    ret = RedBufferGet(pInode->ulDindirBlock, BFLAG_META_DINDIR, (void **)&pInode->pDindir);
                 }
 
                 if(ret == 0)
@@ -955,7 +987,7 @@ REDSTATUS RedInodeDataSeek(
             {
                 if(pInode->pIndir == NULL)
                 {
-                    ret = RedBufferGet(pInode->ulIndirBlock, BFLAG_META_INDIR, CAST_VOID_PTR_PTR(&pInode->pIndir));
+                    ret = RedBufferGet(pInode->ulIndirBlock, BFLAG_META_INDIR, (void **)&pInode->pIndir);
                 }
 
                 if(ret == 0)
@@ -1226,21 +1258,11 @@ static REDSTATUS ReadAligned(
 
             if(ret == 0)
             {
-              #if REDCONF_READ_ONLY == 0
-                /*  Before reading directly from disk, flush any dirty file data
-                    buffers in the range to avoid reading stale data.
-                */
-                ret = RedBufferFlush(ulExtentStart, ulExtentLen);
+                ret = RedBufferReadRange(ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
 
                 if(ret == 0)
-              #endif
                 {
-                    ret = RedIoRead(gbRedVolNum, ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
-
-                    if(ret == 0)
-                    {
-                        ulBlockIndex += ulExtentLen;
-                    }
+                    ulBlockIndex += ulExtentLen;
                 }
             }
             else if(ret == -RED_ENODATA)
@@ -1297,7 +1319,7 @@ static REDSTATUS WriteUnaligned(
     }
     else
     {
-        ret = RedInodeDataSeek(pInode, (uint32_t)(ullStart >> BLOCK_SIZE_P2));
+        ret = SeekInode(pInode, (uint32_t)(ullStart >> BLOCK_SIZE_P2));
 
         if((ret == 0) || (ret == -RED_ENODATA))
         {
@@ -1346,76 +1368,120 @@ static REDSTATUS WriteAligned(
     }
     else
     {
-        bool     fFull = false;
-        uint32_t ulBlockCount = *pulBlockCount;
-        uint32_t ulBlockIndex;
+        uint32_t    ulBlockCount = *pulBlockCount;
+        uint32_t    ulBlockIndex = 0U;
+        uint32_t    ulNextDataBlock = BLOCK_SPARSE;
 
-        /*  Branch all of the file data blocks in advance.
+        /*  Put the data buffer.  If we did _not_ do this, and the initial
+            values in pInode were pInode->ulLogicalBlock == ulBlockStart and
+            pInode->pbData != NULL, then RedBufferDiscardRange() (called below)
+            would try to discard a referenced buffer, which is a critical error.
+
+            Currently, DirEntryWrite() is the only place which invokes
+            RedInodeDataWrite() with pInode in that state, and that will only
+            end up here if DIRENT_SIZE == REDCONF_BLOCK_SIZE.  Nonetheless, put
+            the buffer unconditionally in case other functions are modified such
+            that they call this function with pInode in that state.
         */
-        for(ulBlockIndex = 0U; (ulBlockIndex < ulBlockCount) && !fFull; ulBlockIndex++)
-        {
-            ret = RedInodeDataSeek(pInode, ulBlockStart + ulBlockIndex);
+        RedInodePutData(pInode);
 
-            if((ret == 0) || (ret == -RED_ENODATA))
-            {
-                ret = BranchBlock(pInode, BRANCHDEPTH_FILE_DATA, false);
-
-                if(ret == -RED_ENOSPC)
-                {
-                    if(ulBlockIndex > 0U)
-                    {
-                        ret = 0;
-                    }
-
-                    fFull = true;
-                }
-            }
-
-            if(ret != 0)
-            {
-                break;
-            }
-        }
-
-        ulBlockCount = ulBlockIndex;
-        ulBlockIndex = 0U;
-
-        if(fFull)
-        {
-            ulBlockCount--;
-        }
-
-        /*  Write the data to disk one contiguous extent at a time.
-        */
         while((ret == 0) && (ulBlockIndex < ulBlockCount))
         {
-            uint32_t ulExtentStart;
-            uint32_t ulExtentLen = ulBlockCount - ulBlockIndex;
+            bool        fFull = false;
+            uint32_t    ulExtentStart = BLOCK_SPARSE;
+            uint32_t    ulExtentLen = 0U;
+            uint32_t    i;
 
-            ret = GetExtent(pInode, ulBlockStart + ulBlockIndex, &ulExtentStart, &ulExtentLen);
-
-            if(ret == 0)
+            /*  Branch a contiguous extent of blocks.
+            */
+            for(i = ulBlockIndex; (i < ulBlockCount) && (ret == 0); i++)
             {
-                ret = RedIoWrite(gbRedVolNum, ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
+                if(ulNextDataBlock == BLOCK_SPARSE)
+                {
+                    ret = SeekInode(pInode, ulBlockStart + i);
+
+                    if((ret == 0) || (ret == -RED_ENODATA))
+                    {
+                        /*  Create or branch the parent nodes (if necessary) and
+                            allocate the file data block.
+                        */
+                        ret = BranchBlock(pInode, BRANCHDEPTH_FILE_DATA, false);
+                    }
+                }
+                else
+                {
+                    /*  pInode is still populated with the discontiguous
+                        allocation that ended the last extent.
+                    */
+                    REDASSERT(pInode->ulDataBlock == ulNextDataBlock);
+                    REDASSERT(ulExtentLen == 0U);
+                    ulNextDataBlock = BLOCK_SPARSE;
+                }
 
                 if(ret == 0)
                 {
-                    /*  If there is any buffered file data for the extent we
-                        just wrote, those buffers are now stale.
-                    */
-                    ret = RedBufferDiscardRange(ulExtentStart, ulExtentLen);
+                    if(ulExtentLen == 0U)
+                    {
+                        /*  First data block this pass, starts a new extent.
+                        */
+                        ulExtentStart = pInode->ulDataBlock;
+                        ulExtentLen = 1U;
+                    }
+                    else if(pInode->ulDataBlock == (ulExtentStart + ulExtentLen))
+                    {
+                        /*  Data block allocated at contiguous location,
+                            meaning the extent continues.
+                        */
+                        ulExtentLen++;
+                    }
+                    else
+                    {
+                        /*  Data block allocated and discontiguous location,
+                            thereby ending the extent.  Save that data block
+                            for the next pass.
+                        */
+                        ulNextDataBlock = pInode->ulDataBlock;
+                        break;
+                    }
                 }
+            }
+
+            /*  If we got a disk full error but still managed to allocate at
+                least one block, clear the error for now but remember it for
+                later.
+            */
+            if((ret == -RED_ENOSPC) && (ulExtentLen > 0U))
+            {
+                ret = 0;
+                fFull = true;
+            }
+
+            if(ret == 0)
+            {
+                ret = RedBufferWriteRange(ulExtentStart, ulExtentLen, &pbBuffer[ulBlockIndex << BLOCK_SIZE_P2]);
 
                 if(ret == 0)
                 {
                     ulBlockIndex += ulExtentLen;
                 }
             }
+
+            /*  Restore disk full error.
+            */
+            if((ret == 0) && fFull)
+            {
+                ret = -RED_ENOSPC;
+            }
+        }
+
+        if((ret == -RED_ENOSPC) && (ulBlockIndex > 0U))
+        {
+            ret = 0;
         }
 
         if(ret == 0)
         {
-            *pulBlockCount = ulBlockCount;
+            *pulBlockCount = ulBlockIndex;
         }
     }
 
@@ -1457,7 +1523,7 @@ static REDSTATUS GetExtent(
     }
     else
     {
-        ret = RedInodeDataSeek(pInode, ulBlockStart);
+        ret = SeekInode(pInode, ulBlockStart);
 
         if(ret == 0)
         {
@@ -1467,7 +1533,7 @@ static REDSTATUS GetExtent(
 
             while((ret == 0) && (ulRunLen < ulExtentLen))
             {
-                ret = RedInodeDataSeek(pInode, ulBlockStart + ulRunLen);
+                ret = SeekInode(pInode, ulBlockStart + ulRunLen);
 
                 /*  The extent ends when we find a sparse data block or when the
                     data block is not contiguous with the preceding data block.
@@ -1529,7 +1595,7 @@ static REDSTATUS BranchBlock(
       #if DINDIR_POINTERS > 0U
         if(pInode->uDindirEntry != COORD_ENTRY_INVALID)
         {
-            ret = BranchOneBlock(&pInode->ulDindirBlock, CAST_VOID_PTR_PTR(&pInode->pDindir), BFLAG_META_DINDIR);
+            ret = BranchOneBlock(&pInode->ulDindirBlock, (void **)&pInode->pDindir, BFLAG_META_DINDIR);
 
             if(ret == 0)
             {
@@ -1547,7 +1613,7 @@ static REDSTATUS BranchBlock(
         {
             if((pInode->uIndirEntry != COORD_ENTRY_INVALID) && (depth >= BRANCHDEPTH_INDIR))
             {
-                ret = BranchOneBlock(&pInode->ulIndirBlock, CAST_VOID_PTR_PTR(&pInode->pIndir), BFLAG_META_INDIR);
+                ret = BranchOneBlock(&pInode->ulIndirBlock, (void **)&pInode->pIndir, BFLAG_META_INDIR);
 
                 if(ret == 0)
                 {
@@ -1577,9 +1643,9 @@ static REDSTATUS BranchBlock(
               #if REDCONF_INODE_BLOCKS == 1
                 bool    fAllocedNew = (pInode->ulDataBlock == BLOCK_SPARSE);
               #endif
-                void  **ppBufPtr = (fBuffer || (pInode->pbData != NULL)) ? CAST_VOID_PTR_PTR(&pInode->pbData) : NULL;
+                void  **ppBufPtr = (fBuffer || (pInode->pbData != NULL)) ? (void **)&pInode->pbData : NULL;
 
-                ret = BranchOneBlock(&pInode->ulDataBlock, ppBufPtr, 0U);
+                ret = BranchOneBlock(&pInode->ulDataBlock, ppBufPtr, CINODE_DATA_BFLAG(pInode));
 
                 if(ret == 0)
                 {
@@ -1753,7 +1819,7 @@ static REDSTATUS BranchOneBlock(
 
 /** @brief Compute the free space cost of branching a block.
 
-    The caller must first use RedInodeDataSeek() to the block to be branched.
+    The caller must first use SeekInode() to the block to be branched.
 
     @param pInode   A pointer to the cached inode structure, whose coordinates
                     indicate the block to be branched.

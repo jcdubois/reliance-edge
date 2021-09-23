@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -29,7 +29,6 @@
 #include <semphr.h>
 
 #include <redfs.h>
-#include <redosdeviations.h>
 
 #if REDCONF_TASK_COUNT > 1U
 
@@ -54,10 +53,10 @@ static StaticSemaphore_t xMutexBuffer;
 REDSTATUS RedOsMutexInit(void)
 {
     REDSTATUS ret = 0;
-    
+
   #if defined(configSUPPORT_STATIC_ALLOCATION) && (configSUPPORT_STATIC_ALLOCATION == 1)
     xMutex = xSemaphoreCreateMutexStatic(&xMutexBuffer);
-    
+
     if(xMutex == NULL)
     {
         /*  The only error case for xSemaphoreCreateMutexStatic is that the mutex
@@ -65,8 +64,8 @@ REDSTATUS RedOsMutexInit(void)
         */
         REDERROR();
         ret = -RED_EINVAL;
-    }        
-    
+    }
+
   #else
     xMutex = xSemaphoreCreateMutex();
     if(xMutex == NULL)
@@ -127,7 +126,7 @@ void RedOsMutexRelease(void)
 
     xSuccess = xSemaphoreGive(xMutex);
     REDASSERT(xSuccess == pdTRUE);
-    IGNORE_ERRORS(xSuccess);
+    (void)xSuccess;
 }
 
 #endif

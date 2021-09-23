@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -29,14 +29,14 @@
 
 // Private helpers
 static QString outputLine(const QString &macroName, const QString &value,
-                          const QString &comment = QString::null);
+                          const QString &comment = QString());
 static QString outputIfNotBlank(const QString &macroName, const QString &value,
-                                const QString &comment = QString::null);
+                                const QString &comment = QString());
 static qint32 getMinCompatVer();
 template<typename T>
 static void parseToSetting(const QString &text, Setting<T> *setting,
                           QStringList &notFound, QStringList &notParsed,
-                          const QString &humanName = QString::null);
+                          const QString &humanName = QString());
 static void parseMemSetting(const QString &text, StrSetting *setting);
 static void parseToEnabledDisabledSetting(const QString &text,
                                           StrSetting *setting,
@@ -44,11 +44,11 @@ static void parseToEnabledDisabledSetting(const QString &text,
                                           const QString &strFalse,
                                           QStringList &notFound,
                                           QStringList &notParsed,
-                                          const QString &humanName = QString::null);
+                                          const QString &humanName = QString());
 static void parseToTrSetting(const QString &text, BoolSetting *setting);
 static QString findValue(const QString &text, const QString &macroName, bool &found);
 
-// Constant strings to save some malloc's and code duplicaiton
+// Constant strings to save some malloc's and code duplication
 const QString str1 = QString("1"),
               str0 = QString("0"),
               strU = QString("U");
@@ -71,7 +71,7 @@ static inline void addIntSetting(QString &outputString, IntSetting *intSetting)
 
 // Add a transaction point to the mask at the end of outputString
 // if trSetting is set to true.
-// Trasnaction point will be exluded without evaluating trSetting
+// Trasnaction point will be excluded without evaluating trSetting
 // if override is set to false. Evaluated normally if override
 // is true or unspecified.
 static inline void addTrIfChecked(QString &outputString, BoolSetting *trSetting,
@@ -138,6 +138,10 @@ QString AllSettings::FormatHeaderOutput()
                            (posix && allSettings.cbsPosixFtruncate->GetValue() ? str1 : str0));
     toReturn += outputLine(allSettings.cbsPosixDirOps->GetMacroName(),
                            (posix && allSettings.cbsPosixDirOps->GetValue() ? str1 : str0));
+    toReturn += outputLine(allSettings.cbsPosixCwd->GetMacroName(),
+                           (posix && allSettings.cbsPosixCwd->GetValue() ? str1 : str0));
+    toReturn += outputLine(allSettings.cbsPosixFstrim->GetMacroName(),
+                           (posix && allSettings.cbsPosixFstrim->GetValue() ? str1 : str0));
 
     addIntSetting(toReturn, allSettings.sbsMaxNameLen);
 
@@ -244,10 +248,11 @@ QString AllSettings::FormatHeaderOutput()
         addTrIfChecked(currValue, allSettings.cbsTrTruncate,
                        (posix && allSettings.cbsPosixFtruncate->GetValue())
                        || (!posix && allSettings.cbsFseTruncate->GetValue()));
-        addTrIfChecked(currValue, allSettings.cbsTrSync, posix);
+        addTrIfChecked(currValue, allSettings.cbsTrFSync, posix);
         addTrIfChecked(currValue, allSettings.cbsTrClose, posix);
         addTrIfChecked(currValue, allSettings.cbsTrVolFull);
         addTrIfChecked(currValue, allSettings.cbsTrUmount);
+        addTrIfChecked(currValue, allSettings.cbsTrSync, posix);
 
         // Ensure some flags were added (currValue was changed)
         if(currValue != rememberCurrVal)
@@ -272,9 +277,7 @@ QString AllSettings::FormatHeaderOutput()
             + QString("#define ") + macroNameExternalImap
             + (imapExternal ? QString(" 1\n\n") : QString(" 0\n\n"));
 
-    bool discardSupport = volumeSettings->GetDiscardsSupported();
-    toReturn += QString("#define ") + macroNameDiscardSupport
-            + (discardSupport ? QString(" 1\n\n") : QString(" 0\n\n"));
+    addBoolSetting(toReturn, allSettings.cbsAutomaticDiscards);
 
     toReturn += QString("#define REDCONF_IMAGE_BUILDER 0\n\n");
     toReturn += QString("#define REDCONF_CHECKER 0\n\n");
@@ -327,17 +330,17 @@ QString outputIfNotBlank(const QString &macroName, const QString &value,
 // helpful error message.
 static qint32 getMinCompatVer()
 {
-    if(volumeSettings->GetDiscardsSupported())
+    if(allSettings.rbtnsUsePosix->GetValue() && allSettings.cbsTrSync->GetValue())
     {
-        // Discard support added in v1.1; breaks backwards compatibility
-        // only if enabled.
-        return 0x01010000;
+        // sync support added in v2.3; breaks backwards compatibility only if
+        // enabled.
+        return 0x02030000;
     }
     else
     {
-        // Block I/O retries added in v1.0.2. Breaks backwards compatibility
-        // for all configurations.
-        return 0x01000200;
+        // Volume sector offset added in v2.2, which adds a member to the
+        // volume configuration, thus breaking backward compatibility.
+        return 0x02020000;
     }
 }
 
@@ -353,6 +356,7 @@ void AllSettings::GetErrors(QStringList &errors, QStringList &warnings)
 
     // "General" tab
     AllSettings::CheckError(allSettings.cbsReadonly, errors, warnings);
+    AllSettings::CheckError(allSettings.cbsAutomaticDiscards, errors, warnings);
     AllSettings::CheckError(allSettings.rbtnsUsePosix, errors, warnings);
     AllSettings::CheckError(allSettings.rbtnsUseFse, errors, warnings);
     AllSettings::CheckError(allSettings.cbsPosixFormat, errors, warnings);
@@ -364,6 +368,8 @@ void AllSettings::GetErrors(QStringList &errors, QStringList &warnings)
     AllSettings::CheckError(allSettings.cbsPosixAtomicRename, errors, warnings);
     AllSettings::CheckError(allSettings.cbsPosixFtruncate, errors, warnings);
     AllSettings::CheckError(allSettings.cbsPosixDirOps, errors, warnings);
+    AllSettings::CheckError(allSettings.cbsPosixCwd, errors, warnings);
+    AllSettings::CheckError(allSettings.cbsPosixFstrim, errors, warnings);
     AllSettings::CheckError(allSettings.sbsMaxNameLen, errors, warnings);
     AllSettings::CheckError(allSettings.pssPathSepChar, errors, warnings);
     AllSettings::CheckError(allSettings.sbsTaskCount, errors, warnings);
@@ -409,10 +415,11 @@ void AllSettings::GetErrors(QStringList &errors, QStringList &warnings)
     AllSettings::CheckError(allSettings.cbsTrUnlink, errors, warnings);
     AllSettings::CheckError(allSettings.cbsTrWrite, errors, warnings);
     AllSettings::CheckError(allSettings.cbsTrTruncate, errors, warnings);
-    AllSettings::CheckError(allSettings.cbsTrSync, errors, warnings);
+    AllSettings::CheckError(allSettings.cbsTrFSync, errors, warnings);
     AllSettings::CheckError(allSettings.cbsTrClose, errors, warnings);
     AllSettings::CheckError(allSettings.cbsTrVolFull, errors, warnings);
     AllSettings::CheckError(allSettings.cbsTrUmount, errors, warnings);
+    AllSettings::CheckError(allSettings.cbsTrSync, errors, warnings);
 
     Q_ASSERT(volumeSettings != NULL);
     volumeSettings->GetErrors(errors, warnings);
@@ -434,7 +441,7 @@ void AllSettings::CheckError(SettingBase *setting,
             break;
         default:
             // Nothing to append.
-            // Default clause included to supress GCC's Wswitch.
+            // Default clause included to suppress GCC's Wswitch.
             break;
     }
 }
@@ -461,6 +468,7 @@ void AllSettings::ParseHeaderToSettings(const QString &text,
     }
 
     parseToSetting(text, allSettings.cbsReadonly, notFound, notParsed);
+    parseToSetting(text, allSettings.cbsAutomaticDiscards, notFound, notParsed);
     parseToSetting(text, allSettings.rbtnsUsePosix, notFound, notParsed);
     parseToSetting(text, allSettings.rbtnsUseFse, notFound, notParsed);
     parseToSetting(text, allSettings.cbsPosixFormat, notFound, notParsed);
@@ -472,6 +480,8 @@ void AllSettings::ParseHeaderToSettings(const QString &text,
     parseToSetting(text, allSettings.cbsPosixAtomicRename, notFound, notParsed);
     parseToSetting(text, allSettings.cbsPosixFtruncate, notFound, notParsed);
     parseToSetting(text, allSettings.cbsPosixDirOps, notFound, notParsed);
+    parseToSetting(text, allSettings.cbsPosixCwd, notFound, notParsed);
+    parseToSetting(text, allSettings.cbsPosixFstrim, notFound, notParsed);
     parseToSetting(text, allSettings.sbsMaxNameLen, notFound, notParsed);
     parseToSetting(text, allSettings.pssPathSepChar, notFound, notParsed);
     parseToSetting(text, allSettings.sbsTaskCount, notFound, notParsed);
@@ -560,10 +570,11 @@ void AllSettings::ParseHeaderToSettings(const QString &text,
         parseToTrSetting(trText, allSettings.cbsTrUnlink);
         parseToTrSetting(trText, allSettings.cbsTrWrite);
         parseToTrSetting(trText, allSettings.cbsTrTruncate);
-        parseToTrSetting(trText, allSettings.cbsTrSync);
+        parseToTrSetting(trText, allSettings.cbsTrFSync);
         parseToTrSetting(trText, allSettings.cbsTrClose);
         parseToTrSetting(trText, allSettings.cbsTrVolFull);
         parseToTrSetting(trText, allSettings.cbsTrUmount);
+        parseToTrSetting(trText, allSettings.cbsTrSync);
     }
     else //no matches
     {
@@ -571,7 +582,7 @@ void AllSettings::ParseHeaderToSettings(const QString &text,
     }
 }
 
-// Searches for the the given setting in the given tex. Parses the
+// Searches for the given setting in the given text. Parses the
 // value and loads it into setting. Appends humanName to notFound
 // or to notParsed if the setting was not found or could not be
 // parsed. Appends the setting's macro name if humanName is not
@@ -686,7 +697,7 @@ QString findValue(const QString &text, const QString &macroName, bool &found)
     found = rem.hasMatch() && rem.lastCapturedIndex() > 0;
     if(!found)
     {
-        return QString::null;
+        return QString();
     }
     return rem.captured(1);
 }
@@ -702,6 +713,7 @@ void AllSettings::ParseCodefileToSettings(const QString &text,
 void AllSettings::DeleteAll()
 {
     deleteAndNullify(&allSettings.cbsReadonly);
+    deleteAndNullify(&allSettings.cbsAutomaticDiscards);
     deleteAndNullify(&allSettings.rbtnsUsePosix);
     deleteAndNullify(&allSettings.rbtnsUseFse);
     deleteAndNullify(&allSettings.cbsPosixFormat);
@@ -713,6 +725,8 @@ void AllSettings::DeleteAll()
     deleteAndNullify(&allSettings.cbsPosixAtomicRename);
     deleteAndNullify(&allSettings.cbsPosixFtruncate);
     deleteAndNullify(&allSettings.cbsPosixDirOps);
+    deleteAndNullify(&allSettings.cbsPosixCwd);
+    deleteAndNullify(&allSettings.cbsPosixFstrim);
     deleteAndNullify(&allSettings.sbsMaxNameLen);
     deleteAndNullify(&allSettings.pssPathSepChar);
     deleteAndNullify(&allSettings.sbsTaskCount);
@@ -758,14 +772,16 @@ void AllSettings::DeleteAll()
     deleteAndNullify(&allSettings.cbsTrUnlink);
     deleteAndNullify(&allSettings.cbsTrWrite);
     deleteAndNullify(&allSettings.cbsTrTruncate);
-    deleteAndNullify(&allSettings.cbsTrSync);
+    deleteAndNullify(&allSettings.cbsTrFSync);
     deleteAndNullify(&allSettings.cbsTrClose);
     deleteAndNullify(&allSettings.cbsTrVolFull);
     deleteAndNullify(&allSettings.cbsTrUmount);
+    deleteAndNullify(&allSettings.cbsTrSync);
 }
 
 
 const QString macroNameReadonly = "REDCONF_READ_ONLY";
+const QString macroNameAutomaticDiscards = "REDCONF_DISCARDS";
 const QString macroNameUsePosix = "REDCONF_API_POSIX";
 const QString macroNameUseFse = "REDCONF_API_FSE";
 const QString macroNamePosixFormat = "REDCONF_API_POSIX_FORMAT";
@@ -777,6 +793,8 @@ const QString macroNamePosixRename = "REDCONF_API_POSIX_RENAME";
 const QString macroNamePosixRenameAtomic = "REDCONF_RENAME_ATOMIC";
 const QString macroNamePosixFtruncate = "REDCONF_API_POSIX_FTRUNCATE";
 const QString macroNamePosixDirOps = "REDCONF_API_POSIX_READDIR";
+const QString macroNamePosixCwd = "REDCONF_API_POSIX_CWD";
+const QString macroNamePosixFstrim = "REDCONF_API_POSIX_FSTRIM";
 const QString macroNameMaxNameLen = "REDCONF_NAME_MAX";
 const QString macroNamePathSepChar = "REDCONF_PATH_SEPARATOR";
 const QString macroNameTaskCount = "REDCONF_TASK_COUNT";
@@ -805,7 +823,6 @@ const QString macroNameIndirectPtrs = "REDCONF_INDIRECT_POINTERS";
 // Not in UI
 const QString macroNameInlineImap = "REDCONF_IMAP_INLINE";
 const QString macroNameExternalImap = "REDCONF_IMAP_EXTERNAL";
-const QString macroNameDiscardSupport = "REDCONF_DISCARDS";
 
 // "Memory" tab
 const QString macroNameAllocatedBuffers = "REDCONF_BUFFER_COUNT";
@@ -828,10 +845,11 @@ const QString macroNameTrLink = "RED_TRANSACT_LINK";
 const QString macroNameTrUnlink = "RED_TRANSACT_UNLINK";
 const QString macroNameTrWrite = "RED_TRANSACT_WRITE";
 const QString macroNameTrTruncate = "RED_TRANSACT_TRUNCATE";
-const QString macroNameTrSync = "RED_TRANSACT_FSYNC";
+const QString macroNameTrFSync = "RED_TRANSACT_FSYNC";
 const QString macroNameTrClose = "RED_TRANSACT_CLOSE";
 const QString macroNameTrVolFull = "RED_TRANSACT_VOLFULL";
 const QString macroNameTrUmount = "RED_TRANSACT_UMOUNT";
+const QString macroNameTrSync = "RED_TRANSACT_SYNC";
 
 // Mem & str management function names
 const QString cstdMemcpy = "memcpy";

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -37,6 +37,7 @@
 */
 #include <redfs.h>
 #include <redcore.h>
+#include <redbdev.h>
 
 
 /** @brief Read a range of logical blocks.
@@ -72,16 +73,16 @@ REDSTATUS RedIoRead(
     else
     {
         uint8_t  bSectorShift = gaRedVolume[bVolNum].bBlockSectorShift;
-        uint64_t ullSectorStart = (uint64_t)ulBlockStart << bSectorShift;
+        uint64_t ullSectorStart = ((uint64_t)ulBlockStart << bSectorShift) + gaRedVolConf[bVolNum].ullSectorOffset;
         uint32_t ulSectorCount = ulBlockCount << bSectorShift;
         uint8_t  bRetryIdx;
 
         REDASSERT(bSectorShift < 32U);
         REDASSERT((ulSectorCount >> bSectorShift) == ulBlockCount);
 
-        for(bRetryIdx = 0U; bRetryIdx <= gpRedVolConf->bBlockIoRetries; bRetryIdx++)
+        for(bRetryIdx = 0U; bRetryIdx <= gaRedVolConf[bVolNum].bBlockIoRetries; bRetryIdx++)
         {
-            ret = RedOsBDevRead(bVolNum, ullSectorStart, ulSectorCount, pBuffer);
+            ret = RedBDevRead(bVolNum, ullSectorStart, ulSectorCount, pBuffer);
 
             if(ret == 0)
             {
@@ -130,16 +131,16 @@ REDSTATUS RedIoWrite(
     else
     {
         uint8_t  bSectorShift = gaRedVolume[bVolNum].bBlockSectorShift;
-        uint64_t ullSectorStart = (uint64_t)ulBlockStart << bSectorShift;
+        uint64_t ullSectorStart = ((uint64_t)ulBlockStart << bSectorShift) + gaRedVolConf[bVolNum].ullSectorOffset;
         uint32_t ulSectorCount = ulBlockCount << bSectorShift;
         uint8_t  bRetryIdx;
 
         REDASSERT(bSectorShift < 32U);
         REDASSERT((ulSectorCount >> bSectorShift) == ulBlockCount);
 
-        for(bRetryIdx = 0U; bRetryIdx <= gpRedVolConf->bBlockIoRetries; bRetryIdx++)
+        for(bRetryIdx = 0U; bRetryIdx <= gaRedVolConf[bVolNum].bBlockIoRetries; bRetryIdx++)
         {
-            ret = RedOsBDevWrite(bVolNum, ullSectorStart, ulSectorCount, pBuffer);
+            ret = RedBDevWrite(bVolNum, ullSectorStart, ulSectorCount, pBuffer);
 
             if(ret == 0)
             {
@@ -179,9 +180,9 @@ REDSTATUS RedIoFlush(
     {
         uint8_t  bRetryIdx;
 
-        for(bRetryIdx = 0U; bRetryIdx <= gpRedVolConf->bBlockIoRetries; bRetryIdx++)
+        for(bRetryIdx = 0U; bRetryIdx <= gaRedVolConf[bVolNum].bBlockIoRetries; bRetryIdx++)
         {
-            ret = RedOsBDevFlush(bVolNum);
+            ret = RedBDevFlush(bVolNum);
 
             if(ret == 0)
             {

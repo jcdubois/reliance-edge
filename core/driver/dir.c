@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -35,13 +35,18 @@
 #define DIR_INDEX_INVALID   UINT32_MAX
 
 #if (REDCONF_NAME_MAX % 4U) != 0U
-#define DIRENT_PADDING      (4U - (REDCONF_NAME_MAX % 4U))
+#define DIRENT_PADDING          (4U - (REDCONF_NAME_MAX % 4U))
 #else
-#define DIRENT_PADDING      (0U)
+#define DIRENT_PADDING          (0U)
 #endif
-#define DIRENT_SIZE         (4U + REDCONF_NAME_MAX + DIRENT_PADDING)
-#define DIRENTS_PER_BLOCK   (REDCONF_BLOCK_SIZE / DIRENT_SIZE)
-#define DIRENTS_MAX         (uint32_t)REDMIN(UINT32_MAX, UINT64_SUFFIX(1) * INODE_DATA_BLOCKS * DIRENTS_PER_BLOCK)
+#define DIRENT_SIZE             (4U + REDCONF_NAME_MAX + DIRENT_PADDING)
+#define DIRENTS_OFFSET          ((gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC) ? NODEHEADER_SIZE : 0U)
+#define DIRENT_BYTES_PER_BLOCK  (REDCONF_BLOCK_SIZE - DIRENTS_OFFSET)
+#define DIRENTS_PER_BLOCK       (DIRENT_BYTES_PER_BLOCK / DIRENT_SIZE)
+#define DIRENTS_MAX             (uint32_t)REDMIN(UINT32_MAX, UINT64_SUFFIX(1) * INODE_DATA_BLOCKS * DIRENTS_PER_BLOCK)
+#define DIRENT_PTR(blkptr)      ((const DIRENT *)(&((const uint8_t *)(blkptr))[DIRENTS_OFFSET]))
+#define DIR_BLOCK_USED_SPACE    (DIRENTS_OFFSET + (DIRENT_SIZE * DIRENTS_PER_BLOCK))
+#define DIR_BLOCK_UNUSED_SPACE  (REDCONF_BLOCK_SIZE - DIR_BLOCK_USED_SPACE)
 
 
 /** @brief On-disk directory entry.
@@ -127,6 +132,16 @@ REDSTATUS RedDirEntryCreate(
         {
             ret = -RED_ENAMETOOLONG;
         }
+        else if(    ((ulNameLen == 1U) && (pszName[0U] == '.'))
+                 || ((ulNameLen == 2U) && (pszName[0U] == '.') && (pszName[1U] == '.')))
+        {
+            /*  Disallow creating directory entries named "." or "..".  Even if
+                support for dot/dot-dot parsing is disabled, allowing those
+                names to exist and point at arbitrary inodes would be too
+                confusing.
+            */
+            ret = -RED_EINVAL;
+        }
         else
         {
             uint32_t ulEntryIdx;
@@ -199,21 +214,23 @@ REDSTATUS RedDirEntryDelete(
     }
     else if((DirEntryIndexToOffset(ulDeleteIdx) + DIRENT_SIZE) == pPInode->pInodeBuf->ullSize)
     {
-        uint32_t ulTruncIdx = ulDeleteIdx;
+        /*  Start searching one behind the index to be deleted.
+        */
+        uint32_t ulTruncIdx = ulDeleteIdx - 1U;
         bool     fDone = false;
 
         /*  We are deleting the last dirent in the directory, so search
             backwards to find the last populated dirent, allowing us to truncate
             the directory to that point.
         */
-        while((ret == 0) && (ulTruncIdx > 0U) && !fDone)
+        while((ret == 0) && (ulTruncIdx != UINT32_MAX) && !fDone)
         {
             ret = RedInodeDataSeekAndRead(pPInode, ulTruncIdx / DIRENTS_PER_BLOCK);
 
             if(ret == 0)
             {
-                const DIRENT *pDirents = CAST_CONST_DIRENT_PTR(pPInode->pbData);
-                uint32_t      ulBlockIdx = (ulTruncIdx - 1U) % DIRENTS_PER_BLOCK;
+                const DIRENT *pDirents = DIRENT_PTR(pPInode->pbData);
+                uint32_t      ulBlockIdx = ulTruncIdx % DIRENTS_PER_BLOCK;
 
                 do
                 {
@@ -242,12 +259,42 @@ REDSTATUS RedDirEntryDelete(
             }
         }
 
+        /*  Currently ulTruncIdx represents the last valid dirent index, or
+            UINT32_MAX if the directory is now empty.  Increment it so that it
+            represents the first invalid entry, which will be truncated.
+        */
+        ulTruncIdx++;
+
         /*  Truncate the directory, deleting the requested entry and any empty
             dirents at the end of the directory.
         */
         if(ret == 0)
         {
-            ret = RedInodeDataTruncate(pPInode, DirEntryIndexToOffset(ulTruncIdx));
+            uint64_t ullNewSize = DirEntryIndexToOffset(ulTruncIdx);
+
+            /*  If the last directory block would have nothing but the header,
+                free the block.
+            */
+            if((gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC) && ((ulTruncIdx % DIRENTS_PER_BLOCK) == 0U))
+            {
+                REDASSERT((ullNewSize & (REDCONF_BLOCK_SIZE - 1U)) == NODEHEADER_SIZE);
+                ullNewSize -= NODEHEADER_SIZE;
+            }
+
+            /*  In configurations with unusable space at the end of directory
+                blocks, be sure to truncate away the unusable space.  This makes
+                the directory size more accurate and, more importantly, is
+                required in order for this function to recognize when the final
+                dirent in a block is being deleted.
+            */
+            if(    (DIR_BLOCK_UNUSED_SPACE > 0U)
+                && (ullNewSize >= REDCONF_BLOCK_SIZE)
+                && ((ullNewSize & (REDCONF_BLOCK_SIZE - 1U)) == 0U))
+            {
+                ullNewSize -= DIR_BLOCK_UNUSED_SPACE;
+            }
+
+            ret = RedInodeDataTruncate(pPInode, ullNewSize);
         }
     }
     else
@@ -337,7 +384,7 @@ REDSTATUS RedDirEntryLookup(
 
                 if(ret == 0)
                 {
-                    const DIRENT *pDirents = CAST_CONST_DIRENT_PTR(pPInode->pbData);
+                    const DIRENT *pDirents = DIRENT_PTR(pPInode->pbData);
                     uint32_t      ulBlockLastIdx = REDMIN(DIRENTS_PER_BLOCK, ulDirentCount - ulIdx);
                     uint32_t      ulBlockIdx;
 
@@ -446,10 +493,10 @@ REDSTATUS RedDirEntryLookup(
 }
 
 
-#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_CHECKER == 1)
+#if (REDCONF_API_POSIX_READDIR == 1) || (REDCONF_API_POSIX_CWD == 1) || (REDCONF_CHECKER == 1)
 /** @brief Read the next entry from a directory, given a starting index.
 
-    @param pInode   A pointer to the cached inode structure of the directory to
+    @param pPInode  A pointer to the cached inode structure of the directory to
                     read from.
     @param pulIdx   On entry, the directory index to start reading from.  On
                     successful return, populated with the directory index to use
@@ -506,7 +553,7 @@ REDSTATUS RedDirEntryRead(
 
             if(ret == 0)
             {
-                const DIRENT *pDirents = CAST_CONST_DIRENT_PTR(pPInode->pbData);
+                const DIRENT *pDirents = DIRENT_PTR(pPInode->pbData);
                 uint32_t      ulBlockLastIdx = REDMIN(DIRENTS_PER_BLOCK, ulDirentCount - (ulBlockOffset * DIRENTS_PER_BLOCK));
                 uint32_t      ulBlockIdx;
 
@@ -616,7 +663,7 @@ REDSTATUS RedDirEntryRename(
     const char *pszDstName,
     CINODE     *pDstInode)
 {
-    REDSTATUS   ret;
+    REDSTATUS   ret = 0;
 
     if(    !CINODE_IS_DIRTY(pSrcPInode)
         || (pszSrcName == NULL)
@@ -633,12 +680,26 @@ REDSTATUS RedDirEntryRename(
     }
     else
     {
+        uint32_t ulDstNameLen = RedNameLen(pszDstName);
         uint32_t ulDstIdx = 0U; /* Init'd to quiet warnings. */
-        uint32_t ulSrcIdx;
+        uint32_t ulSrcIdx = 0U; /* Init'd to quiet warnings. */
+
+        /*  Disallow renaming anything to "." or "..".  Even if support for
+            dot/dot-dot parsing is disabled, allowing those names to exist and
+            point at arbitrary inodes would be too confusing.
+        */
+        if(    ((ulDstNameLen == 1U) && (pszDstName[0U] == '.'))
+            || ((ulDstNameLen == 2U) && (pszDstName[0U] == '.') && (pszDstName[1U] == '.')))
+        {
+            ret = -RED_EINVAL;
+        }
 
         /*  Look up the source and destination names.
         */
-        ret = RedDirEntryLookup(pSrcPInode, pszSrcName, &ulSrcIdx, &pSrcInode->ulInode);
+        if(ret == 0)
+        {
+            ret = RedDirEntryLookup(pSrcPInode, pszSrcName, &ulSrcIdx, &pSrcInode->ulInode);
+        }
 
         if(ret == 0)
         {
@@ -708,7 +769,7 @@ REDSTATUS RedDirEntryRename(
 
             if(ret == 0)
             {
-                ret = DirEntryWrite(pDstPInode, ulDstIdx, pSrcInode->ulInode, pszDstName, RedNameLen(pszDstName));
+                ret = DirEntryWrite(pDstPInode, ulDstIdx, pSrcInode->ulInode, pszDstName, ulDstNameLen);
             }
 
             if(ret == 0)
@@ -727,7 +788,7 @@ REDSTATUS RedDirEntryRename(
                   #if REDCONF_RENAME_ATOMIC == 1
                     if(pDstInode->ulInode != INODE_INVALID)
                     {
-                        ret2 = DirEntryWrite(pDstPInode, ulDstIdx, pDstInode->ulInode, pszDstName, RedNameLen(pszDstName));
+                        ret2 = DirEntryWrite(pDstPInode, ulDstIdx, pDstInode->ulInode, pszDstName, ulDstNameLen);
                     }
                     else
                   #endif
@@ -910,13 +971,17 @@ static uint64_t DirEntryIndexToOffset(
     uint32_t ulIdx)
 {
     uint32_t ulBlock = ulIdx / DIRENTS_PER_BLOCK;
-    uint32_t ulOffsetInBlock = ulIdx % DIRENTS_PER_BLOCK;
+    uint32_t ulDirentsIntoBlock = ulIdx % DIRENTS_PER_BLOCK;
     uint64_t ullOffset;
 
     REDASSERT(ulIdx < DIRENTS_MAX);
 
     ullOffset = (uint64_t)ulBlock << BLOCK_SIZE_P2;
-    ullOffset += (uint64_t)ulOffsetInBlock * DIRENT_SIZE;
+    if(gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC)
+    {
+        ullOffset += NODEHEADER_SIZE;
+    }
+    ullOffset += (uint64_t)ulDirentsIntoBlock * DIRENT_SIZE;
 
     return ullOffset;
 }
@@ -932,15 +997,37 @@ static uint64_t DirEntryIndexToOffset(
 static uint32_t DirOffsetToEntryIndex(
     uint64_t ullOffset)
 {
+    uint32_t ulOffsetIntoBlock = (uint32_t)(ullOffset & (REDCONF_BLOCK_SIZE - 1U));
     uint32_t ulIdx;
 
     REDASSERT(ullOffset < INODE_SIZE_MAX);
-    REDASSERT(((uint32_t)(ullOffset & (REDCONF_BLOCK_SIZE - 1U)) % DIRENT_SIZE) == 0U);
 
-    /*  Avoid doing any 64-bit divides.
-    */
     ulIdx = (uint32_t)(ullOffset >> BLOCK_SIZE_P2) * DIRENTS_PER_BLOCK;
-    ulIdx += (uint32_t)(ullOffset & (REDCONF_BLOCK_SIZE - 1U)) / DIRENT_SIZE;
+
+    /*  This function is called with a ullOffset which is the directory inode
+        size, in order to compute the dirent count.  If the inode size is
+        block-aligned (including the case where the size is zero), then ulIdx
+        is already correct.
+    */
+    if(ulOffsetIntoBlock != 0U)
+    {
+        if(gpRedCoreVol->ulVersion >= RED_DISK_LAYOUT_DIRCRC)
+        {
+            /*  Any non block-aligned offset should be a valid dirent offset,
+                which always comes after the node header and is dirent-size
+                aligned.
+            */
+            REDASSERT(ulOffsetIntoBlock >= NODEHEADER_SIZE);
+            REDASSERT(((ulOffsetIntoBlock - NODEHEADER_SIZE) % DIRENT_SIZE) == 0U);
+
+            ulIdx += (ulOffsetIntoBlock - NODEHEADER_SIZE) / DIRENT_SIZE;
+        }
+        else
+        {
+            REDASSERT((ulOffsetIntoBlock % DIRENT_SIZE) == 0U);
+            ulIdx += ulOffsetIntoBlock / DIRENT_SIZE;
+        }
+    }
 
     return ulIdx;
 }

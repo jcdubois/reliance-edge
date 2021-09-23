@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -27,6 +27,7 @@
 */
 #include <redfs.h>
 #include <redvolume.h>
+#include <redbdev.h>
 
 
 /** @brief Initialize a block device.
@@ -88,7 +89,7 @@ REDSTATUS RedOsBDevOpen(
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0       Operation was successful.
+    @retval 0           Operation was successful.
     @retval -RED_EINVAL @p bVolNum is an invalid volume number.
 */
 REDSTATUS RedOsBDevClose(
@@ -97,6 +98,44 @@ REDSTATUS RedOsBDevClose(
     REDSTATUS   ret;
 
     if(bVolNum >= REDCONF_VOLUME_COUNT)
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        REDERROR();
+        ret = -RED_ENOSYS;
+    }
+
+    return ret;
+}
+
+
+/** @brief Return the block device geometry.
+
+    The behavior of calling this function is undefined if the block device is
+    closed.
+
+    @param bVolNum  The volume number of the volume whose block device geometry
+                    is being queried.
+    @param pInfo    On successful return, populated with the geometry of the
+                    block device.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0               Operation was successful.
+    @retval -RED_EINVAL     @p bVolNum is an invalid volume number, or @p pInfo
+                            is `NULL`.
+    @retval -RED_EIO        A disk I/O error occurred.
+    @retval -RED_ENOTSUPP   The geometry cannot be queried on this block device.
+*/
+REDSTATUS RedOsBDevGetGeometry(
+    uint8_t     bVolNum,
+    BDEVINFO   *pInfo)
+{
+    REDSTATUS   ret;
+
+    if((bVolNum >= REDCONF_VOLUME_COUNT) || (pInfo == NULL))
     {
         ret = -RED_EINVAL;
     }
@@ -138,8 +177,7 @@ REDSTATUS RedOsBDevRead(
     REDSTATUS   ret = 0;
 
     if(    (bVolNum >= REDCONF_VOLUME_COUNT)
-        || (ullSectorStart >= gaRedVolConf[bVolNum].ullSectorCount)
-        || ((gaRedVolConf[bVolNum].ullSectorCount - ullSectorStart) < ulSectorCount)
+        || !VOLUME_SECTOR_RANGE_IS_VALID(bVolNum, ullSectorStart, ulSectorCount)
         || (pBuffer == NULL))
     {
         ret = -RED_EINVAL;
@@ -183,8 +221,7 @@ REDSTATUS RedOsBDevWrite(
     REDSTATUS   ret = 0;
 
     if(    (bVolNum >= REDCONF_VOLUME_COUNT)
-        || (ullSectorStart >= gaRedVolConf[bVolNum].ullSectorCount)
-        || ((gaRedVolConf[bVolNum].ullSectorCount - ullSectorStart) < ulSectorCount)
+        || !VOLUME_SECTOR_RANGE_IS_VALID(bVolNum, ullSectorStart, ulSectorCount)
         || (pBuffer == NULL))
     {
         ret = -RED_EINVAL;

@@ -21,7 +21,7 @@
 #undef  REDCONF_ENDIAN_BIG
 #define REDCONF_ENDIAN_BIG 0
 
-/*  Ignore the target system memory alignment.  For Windows, 4 bytes works well.
+/*  Ignore the target system memory alignment.  For Linux, 4 bytes works well.
 */
 #undef  REDCONF_ALIGNMENT_SIZE
 #define REDCONF_ALIGNMENT_SIZE 4U
@@ -104,7 +104,7 @@
 /*  Avoid extra transactions to improve image builder performance.
 */
 #undef  REDCONF_TRANSACT_DEFAULT
-#define REDCONF_TRANSACT_DEFAULT (( RED_TRANSACT_FSYNC | RED_TRANSACT_VOLFULL | RED_TRANSACT_UMOUNT ) & RED_TRANSACT_MASK)
+#define REDCONF_TRANSACT_DEFAULT (( RED_TRANSACT_FSYNC | RED_TRANSACT_VOLFULL | RED_TRANSACT_UMOUNT | RED_TRANSACT_SYNC ) & RED_TRANSACT_MASK)
 
 
 #endif

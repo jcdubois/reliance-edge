@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -78,10 +78,22 @@ void LimitReporter::updateLimits()
         doubleIndirs = 0;
     }
 
-    qulonglong inodeDataBlocks =
-              static_cast<qulonglong>(dirPointers)                  // Direct blocks
-            + static_cast<qulonglong>(indirPointers) * indirEntries // Indir blocks
-            + doubleIndirs * indirEntries * indirEntries;           // Dindir blocks
+    qlonglong indirBlocks = static_cast<qulonglong>(indirPointers) * indirEntries;
+    qlonglong dindirEntries = indirEntries * indirEntries;
+    qlonglong dindirDataBlocksMax = 0xFFFFFFFF - (dirPointers + indirBlocks);
+    qlonglong dindirDataBlocks = doubleIndirs * dindirEntries;
+
+    if(dindirDataBlocks > dindirDataBlocksMax)
+    {
+        dindirDataBlocks = dindirDataBlocksMax;
+    }
+
+    qulonglong inodeDataBlocks = static_cast<qulonglong>(dirPointers) + indirBlocks + dindirDataBlocks;
+
+    // Inode size is restricted such that the block count will fit into an
+    // unsigned 32-bit integer.
+    if (inodeDataBlocks > 0xFFFFFFFF)
+        inodeDataBlocks = 0xFFFFFFFF;
 
     qlonglong inodeSizeMax = inodeDataBlocks * static_cast<qlonglong>(blockSize);
 

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -79,7 +79,7 @@ uint32_t RedCrc32Update(
     }
     else
     {
-        const uint8_t  *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+        const uint8_t  *pbBuffer = pBuffer;
         uint32_t        ulIdx;
 
         ulCrc32 = ~ulInitCrc32;
@@ -167,7 +167,7 @@ uint32_t RedCrc32Update(
     }
     else
     {
-        const uint8_t  *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+        const uint8_t  *pbBuffer = pBuffer;
         uint32_t        ulIdx;
 
         ulCrc32 = ~ulInitCrc32;
@@ -488,7 +488,7 @@ uint32_t RedCrc32Update(
     }
     else
     {
-        const uint8_t  *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+        const uint8_t  *pbBuffer = pBuffer;
         uint32_t        ulIdx = 0U;
         const uint32_t *pulXorCrc0 = &aulCrc32Table[7U];
         const uint32_t *pulXorCrc1 = &aulCrc32Table[6U];
@@ -506,7 +506,7 @@ uint32_t RedCrc32Update(
             performance and faults (depending on platform), handle the
             unaligned initial bytes (if any) using the Sarwate algorithm.
         */
-        while((ulIdx < ulLength) && !IS_ALIGNED_PTR(&pbBuffer[ulIdx]))
+        while((ulIdx < ulLength) && !IS_ALIGNED_PTR(&pbBuffer[ulIdx], REDCONF_ALIGNMENT_SIZE))
         {
             ulCrc32 = (ulCrc32 >> 8U) ^ aulCrc32Table[((ulCrc32 ^ pbBuffer[ulIdx]) & 0xFFU) << 3U];
 
@@ -527,7 +527,13 @@ uint32_t RedCrc32Update(
             ulCrc32 ^= pbBuffer[ulIdx] | ((uint32_t)pbBuffer[ulIdx+1U] << 8U) |
                        ((uint32_t)pbBuffer[ulIdx+2U] << 16U) | ((uint32_t)pbBuffer[ulIdx+3U] << 24U);
           #else
-            ulCrc32 ^= *CAST_CONST_UINT32_PTR(&pbBuffer[ulIdx]);
+            /*  Regarding the cast to (const void *): this is there to placate
+                some compilers which emit warnings when a type with lower
+                alignment requirements (such as const uint8_t *) is cast to a
+                type with higher alignment requirements.  This isn't a concern
+                here, since we ensured the pointer was sufficiently aligned.
+            */
+            ulCrc32 ^= *((const uint32_t *)((const void *)&pbBuffer[ulIdx]));
           #endif
 
             ulCrc32 =
@@ -584,7 +590,7 @@ uint32_t RedCrcNode(
     }
     else
     {
-        const uint8_t *pbBuffer = CAST_VOID_PTR_TO_CONST_UINT8_PTR(pBuffer);
+        const uint8_t *pbBuffer = pBuffer;
 
         /*  The first eight bytes of a metadata node contain the signature and
             the CRC.  There is little value in CRCing the signature, and the

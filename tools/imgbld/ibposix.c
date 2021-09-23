@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -73,7 +73,7 @@ int IbApiUninit(void)
 /** @brief Writes file data to a file. This method may be called multiple times
            to write consecutive chunks of file data.
 
-    @param volNum           Unused parameter; maintained for compatability with
+    @param volNum           Unused parameter; maintained for compatibility with
                             FSE IbWriteFile.
     @param psFileMapping    The file being copied. File data will be written to
                             ::asOutFilePath.
@@ -98,7 +98,7 @@ int IbWriteFile(
 
     (void) volNum;
 
-    /*  Only print out a mesage for the first write to a file.
+    /*  Only print out a message for the first write to a file.
     */
     if(ullOffset == 0U)
     {
@@ -198,21 +198,32 @@ int IbPosixCopyDir(
         char    asInputDir[HOST_PATH_MAX];
         size_t  inDirLen = strlen(pszInDir);
 
-        (void) strncpy(asInputDir, pszInDir, HOST_PATH_MAX - 1);
-
-        /*  Get rid of any ending path separators.
-        */
-        while(     asInputDir[inDirLen - 1] == '/'
-      #ifdef _WIN32
-                || asInputDir[inDirLen - 1] == '\\'
-      #endif
-             )
+        if(inDirLen >= HOST_PATH_MAX)
         {
-            asInputDir[inDirLen - 1] = '\0';
-            inDirLen--;
+            /*  Not expected; the length of pszInDir should have already been checked.
+            */
+            fprintf(stderr, "Error: path too long: %s\n", pszInDir);
+            REDERROR();
+            ret = -1;
         }
+        else
+        {
+            strcpy(asInputDir, pszInDir);
 
-        ret = IbPosixCopyDirRecursive(pszVolName, asInputDir);
+            /*  Get rid of any ending path separators.
+            */
+            while(     asInputDir[inDirLen - 1] == '/'
+          #ifdef _WIN32
+                    || asInputDir[inDirLen - 1] == '\\'
+          #endif
+                 )
+            {
+                asInputDir[inDirLen - 1] = '\0';
+                inDirLen--;
+            }
+
+            ret = IbPosixCopyDirRecursive(pszVolName, asInputDir);
+        }
     }
 
     if(ret == 0)

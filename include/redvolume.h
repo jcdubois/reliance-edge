@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -26,6 +26,9 @@
 */
 #ifndef REDVOLUME_H
 #define REDVOLUME_H
+
+
+#include "redexclude.h" /* for DISCARD_SUPPORTED */
 
 
 /** @brief Per-volume configuration structure.
@@ -39,14 +42,22 @@ typedef struct
 {
     /** The sector size for the block device underlying the volume: the basic
         unit for reading and writing to the storage media.  Commonly ranges
-        between 512 and 4096, but any power-of-two value not greater than the
-        block size will work.
+        between 512 and 4096; the full range of permitted values are the
+        powers-of-two between 128 and 65536 which are less than or equal to (<=)
+        #REDCONF_BLOCK_SIZE.  A value of #SECTOR_SIZE_AUTO (0) indicates that
+        the sector size should be queried from the block device.
     */
     uint32_t    ulSectorSize;
 
-    /** The number of sectors in this file system volume.
+    /** The number of sectors in this file system volume.  A value of
+        #SECTOR_COUNT_AUTO (0) indicates that the sector count should be queried
+        from the block device.
     */
     uint64_t    ullSectorCount;
+
+    /** The number of sectors into the disk where this volume starts.
+    */
+    uint64_t    ullSectorOffset;
 
     /** Whether a sector write on the block device underlying the volume is
         atomic.  It is atomic if when the sector write is interrupted, the

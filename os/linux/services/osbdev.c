@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -28,11 +28,11 @@
 
 /*  Enable stat64 and make off_t 64 bits.
 */
-#define __USE_LARGEFILE64
 #define _LARGEFILE_SOURCE
 #define _LARGEFILE64_SOURCE
 #define _FILE_OFFSET_BITS 64
 
+#include <features.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -47,26 +47,30 @@
 
 #include <redfs.h>
 #include <redvolume.h>
+#include <redbdev.h>
+
 
 typedef enum
 {
     BDEVTYPE_RAM_DISK = 0,  /* Default: must be zero. */
-    BDEVTYPE_FILE_DISK = 1,
+    BDEVTYPE_FILE_DISK = 1
 } BDEVTYPE;
 
 typedef struct
 {
     bool            fOpen;      /* The block device is open. */
-    BDEVOPENMODE    mode;       /* Acess mode. */
-    BDEVTYPE        type;       /* Disk type: ram disk, file disk, raw disk. */
+    BDEVOPENMODE    mode;       /* Access mode. */
+    BDEVTYPE        type;       /* Disk type: ram disk or file disk. */
     uint8_t        *pbRamDisk;  /* Buffer for RAM disks. */
     const char     *pszSpec;    /* Path for file and raw disks. */
     int             fd;         /* File descriptor for file disks. */
+    bool            fIsBDev;    /* Whether file disk is a block device. */
 } LINUXBDEV;
 
 
 static REDSTATUS RamDiskOpen(uint8_t bVolNum, BDEVOPENMODE mode);
 static REDSTATUS RamDiskClose(uint8_t bVolNum);
+static REDSTATUS RamDiskGetGeometry(uint8_t bVolNum, BDEVINFO *pInfo);
 static REDSTATUS RamDiskRead(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, void *pBuffer);
 #if REDCONF_READ_ONLY == 0
 static REDSTATUS RamDiskWrite(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, const void *pBuffer);
@@ -74,6 +78,7 @@ static REDSTATUS RamDiskFlush(uint8_t bVolNum);
 #endif
 static REDSTATUS FileDiskOpen(uint8_t bVolNum, BDEVOPENMODE mode);
 static REDSTATUS FileDiskClose(uint8_t bVolNum);
+static REDSTATUS FileDiskGetGeometry(uint8_t bVolNum, BDEVINFO *pInfo);
 static REDSTATUS FileDiskRead(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, void *pBuffer);
 #if REDCONF_READ_ONLY == 0
 static REDSTATUS FileDiskWrite(uint8_t bVolNum, uint64_t ullSectorStart, uint32_t ulSectorCount, const void *pBuffer);
@@ -152,7 +157,8 @@ REDSTATUS RedOsBDevConfig(
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
-    @retval -RED_EINVAL @p bVolNum is an invalid volume number.
+    @retval -RED_EINVAL @p bVolNum is an invalid volume number; or invalid
+                        sector geometry.
     @retval -RED_EIO    A disk I/O error occurred.
 */
 REDSTATUS RedOsBDevOpen(
@@ -251,6 +257,68 @@ REDSTATUS RedOsBDevClose(
 }
 
 
+/** @brief Return the block device geometry.
+
+    The behavior of calling this function is undefined if the block device is
+    closed.
+
+    @param bVolNum  The volume number of the volume whose block device geometry
+                    is being queried.
+    @param pInfo    On successful return, populated with the geometry of the
+                    block device.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0               Operation was successful.
+    @retval -RED_EINVAL     @p bVolNum is an invalid volume number; or @p pInfo
+                            is `NULL`; or invalid sector geometry.
+    @retval -RED_EIO        A disk I/O error occurred.
+    @retval -RED_ENOTSUPP   The geometry cannot be queried on this block device.
+*/
+REDSTATUS RedOsBDevGetGeometry(
+    uint8_t     bVolNum,
+    BDEVINFO   *pInfo)
+{
+    REDSTATUS   ret;
+
+    if((bVolNum >= REDCONF_VOLUME_COUNT) || (pInfo == NULL) || !gaDisk[bVolNum].fOpen)
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        switch(gaDisk[bVolNum].type)
+        {
+            case BDEVTYPE_RAM_DISK:
+                ret = RamDiskGetGeometry(bVolNum, pInfo);
+                break;
+
+            case BDEVTYPE_FILE_DISK:
+                ret = FileDiskGetGeometry(bVolNum, pInfo);
+                break;
+
+            default:
+                REDERROR();
+                ret = -RED_EINVAL;
+                break;
+        }
+
+        if((ret == 0) && (pInfo->ullSectorCount > (UINT64_MAX / pInfo->ulSectorSize)))
+        {
+            /*  Both the RAM disk and the file disk will access the sectors by
+                byte address.  If the Sector*SectorSize multiplication will
+                result in unsigned integer wraparound, detect it here rather
+                than accessing the wrong sector.
+            */
+            fprintf(stderr, "Error: sector geometry for volume %d too large to be byte-addressable\n", (int)bVolNum);
+            ret = -RED_EINVAL;
+        }
+    }
+
+    return ret;
+}
+
+
 /** @brief Read sectors from a physical block device.
 
     The behavior of calling this function is undefined if the block device is
@@ -281,8 +349,7 @@ REDSTATUS RedOsBDevRead(
     if(    (bVolNum >= REDCONF_VOLUME_COUNT)
         || !gaDisk[bVolNum].fOpen
         || (gaDisk[bVolNum].mode == BDEV_O_WRONLY)
-        || (ullSectorStart >= gaRedVolConf[bVolNum].ullSectorCount)
-        || ((gaRedVolConf[bVolNum].ullSectorCount - ullSectorStart) < ulSectorCount)
+        || !VOLUME_SECTOR_RANGE_IS_VALID(bVolNum, ullSectorStart, ulSectorCount)
         || (pBuffer == NULL))
     {
         ret = -RED_EINVAL;
@@ -341,8 +408,7 @@ REDSTATUS RedOsBDevWrite(
     if(    (bVolNum >= REDCONF_VOLUME_COUNT)
         || !gaDisk[bVolNum].fOpen
         || (gaDisk[bVolNum].mode == BDEV_O_RDONLY)
-        || (ullSectorStart >= gaRedVolConf[bVolNum].ullSectorCount)
-        || ((gaRedVolConf[bVolNum].ullSectorCount - ullSectorStart) < ulSectorCount)
+        || !VOLUME_SECTOR_RANGE_IS_VALID(bVolNum, ullSectorStart, ulSectorCount)
         || (pBuffer == NULL))
     {
         ret = -RED_EINVAL;
@@ -442,10 +508,10 @@ REDSTATUS RedOsBDevFlush(
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
-    @retval -RED_EINVAL bVolNum is an invalid volume number.
+    @retval -RED_EINVAL Invalid sector geometry for a RAM disk.
     @retval -RED_EIO    A disk I/O error occurred.
 */
-REDSTATUS RamDiskOpen(
+static REDSTATUS RamDiskOpen(
     uint8_t         bVolNum,
     BDEVOPENMODE    mode)
 {
@@ -453,15 +519,45 @@ REDSTATUS RamDiskOpen(
 
     (void)mode;
 
-
-    if(gaDisk[bVolNum].pbRamDisk == NULL)
+    if(    (gaRedVolConf[bVolNum].ulSectorSize == SECTOR_SIZE_AUTO)
+        || (gaRedVolConf[bVolNum].ullSectorCount == SECTOR_COUNT_AUTO))
     {
-        gaDisk[bVolNum].pbRamDisk = calloc(gaRedVolume[bVolNum].ulBlockCount, REDCONF_BLOCK_SIZE);
-
-        if(gaDisk[bVolNum].pbRamDisk == NULL)
+        /*  Automatic detection of sector size and sector count are not
+            supported by the RAM disk.
+        */
+        ret = -RED_ENOTSUPP;
+    }
+    else if(gaRedVolConf[bVolNum].ullSectorOffset > 0U)
+    {
+        /*  A sector offset makes no sense for a RAM disk.  The feature exists
+            to enable partitioning, but we don't support having more than one
+            file system on a RAM disk.  Thus, having a sector offset would only
+            waste memory by making the RAM disk bigger.
+        */
+        ret = -RED_EINVAL;
+    }
+    else if(gaDisk[bVolNum].pbRamDisk == NULL)
+    {
+        /*  Make sure the sector count fits into a size_t, for the calloc()
+            parameter.
+        */
+        if(gaRedVolConf[bVolNum].ullSectorCount > SIZE_MAX)
         {
-            ret = -RED_EIO;
+            ret = -RED_EINVAL;
         }
+        else
+        {
+            gaDisk[bVolNum].pbRamDisk = calloc((size_t)gaRedVolConf[bVolNum].ullSectorCount, gaRedVolConf[bVolNum].ulSectorSize);
+            if(gaDisk[bVolNum].pbRamDisk == NULL)
+            {
+                ret = -RED_EIO;
+            }
+        }
+    }
+    else
+    {
+        /*  RAM disk already exists, nothing to do.
+        */
     }
 
     return ret;
@@ -485,19 +581,46 @@ REDSTATUS RamDiskOpen(
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0           Operation was successful.
-    @retval -RED_EINVAL bVolNum is an invalid volume number.
-    @retval -RED_EIO    A disk I/O error occurred.
+    @retval 0   Operation was successful.
 */
-REDSTATUS RamDiskClose(
-    uint8_t     bVolNum)
+static REDSTATUS RamDiskClose(
+    uint8_t bVolNum)
 {
     /*  This implementation uses dynamically allocated memory, but must retain
         previously written data after the block device is closed, and thus the
         memory cannot be freed and will remain allocated until the program
         exits.
     */
+    (void)bVolNum;
+
     return 0;
+}
+
+
+/** @brief Return the block device geometry.
+
+    Not supported on RAM disks.  Geometry must be specified in redconf.c.
+
+    @param bVolNum          The volume number of the volume whose block device
+                            geometry is being queried.
+    @param pulSectorSize    The starting sector number.
+    @param pullSectorCount  The number of sectors to read.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval -RED_ENOTSUPP   The geometry cannot be queried on this block device.
+*/
+static REDSTATUS RamDiskGetGeometry(
+    uint8_t     bVolNum,
+    BDEVINFO   *pInfo)
+{
+    (void)bVolNum;
+    (void)pInfo;
+
+    /*  The RAM disk requires the geometry to be specified in the volume
+        configuration at compile-time; it cannot be detected at run-time.
+    */
+    return -RED_ENOTSUPP;
 }
 
 
@@ -514,13 +637,9 @@ REDSTATUS RamDiskClose(
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0           Operation was successful.
-    @retval -RED_EINVAL @p bVolNum is an invalid volume number, @p pBuffer is
-                        `NULL`, or @p ullStartSector and/or @p ulSectorCount
-                        refer to an invalid range of sectors.
-    @retval -RED_EIO    A disk I/O error occurred.
+    @retval 0   Operation was successful.
 */
-REDSTATUS RamDiskRead(
+static REDSTATUS RamDiskRead(
     uint8_t     bVolNum,
     uint64_t    ullSectorStart,
     uint32_t    ulSectorCount,
@@ -549,13 +668,9 @@ REDSTATUS RamDiskRead(
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0           Operation was successful.
-    @retval -RED_EINVAL @p bVolNum is an invalid volume number, @p pBuffer is
-                        `NULL`, or @p ullStartSector and/or @p ulSectorCount
-                        refer to an invalid range of sectors.
-    @retval -RED_EIO    A disk I/O error occurred.
+    @retval 0   Operation was successful.
 */
-REDSTATUS RamDiskWrite(
+static REDSTATUS RamDiskWrite(
     uint8_t     bVolNum,
     uint64_t    ullSectorStart,
     uint32_t    ulSectorCount,
@@ -587,25 +702,36 @@ REDSTATUS RamDiskWrite(
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
-    @retval 0           Operation was successful.
-    @retval -RED_EINVAL bVolNum is an invalid volume number.
-    @retval -RED_EIO    A disk I/O error occurred.
+    @retval 0   Operation was successful.
 */
-REDSTATUS RamDiskFlush(
-    uint8_t     bVolNum)
+static REDSTATUS RamDiskFlush(
+    uint8_t bVolNum)
 {
+    (void)bVolNum;
+
     return 0;
 }
 #endif /* REDCONF_READ_ONLY == 0 */
 
 
+/** @brief Initialize a file disk.
+
+    @param bVolNum  The volume number of the volume whose block device is being
+                    initialized.
+    @param mode     The open mode, indicating the type of access required.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    A disk I/O error occurred.
+    @retval -RED_EINVAL File disk not compatible with sector geometry.
+*/
 static REDSTATUS FileDiskOpen(
     uint8_t         bVolNum,
     BDEVOPENMODE    mode)
 {
     LINUXBDEV      *pDisk = &gaDisk[bVolNum];
     REDSTATUS       ret = 0;
-    int             fileFlags = O_RDONLY;
     struct stat64   stat;
 
     if(stat64(pDisk->pszSpec, &stat) != 0)
@@ -620,8 +746,10 @@ static REDSTATUS FileDiskOpen(
         }
     }
 
-    if (ret == 0)
+    if(ret == 0)
     {
+        int fileFlags = O_RDONLY;
+
       #if REDCONF_READ_ONLY == 0
         switch(mode)
         {
@@ -638,7 +766,10 @@ static REDSTATUS FileDiskOpen(
         }
       #endif
 
-        fileFlags |= O_CREAT;
+        if(gaRedVolConf[bVolNum].ullSectorCount != SECTOR_COUNT_AUTO)
+        {
+            fileFlags |= O_CREAT;
+        }
 
         pDisk->fd = open(pDisk->pszSpec, fileFlags, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
 
@@ -647,41 +778,56 @@ static REDSTATUS FileDiskOpen(
             perror("Error opening file as block device");
             ret = -RED_EIO;
         }
+
+        pDisk->fIsBDev = S_ISBLK(stat.st_mode);
     }
 
-    if(ret == 0)
+    /*  If the file disk is a regular file, make sure that it's big enough that
+        block 0 can be read successfully.  In most cases blocks will be written
+        before they are read, but many tests will try to mount the volume before
+        formatting in order to preserve format options.  If the file size is too
+        small, reading the master block will assert.  If instead there is zeroed
+        data in the master block, mount will cleanly return an error.
+    */
+    if((ret == 0) && !pDisk->fIsBDev)
     {
-        uint32_t ulVolSecSize = gaRedVolConf[bVolNum].ulSectorSize;
-        uint64_t ullVolSecCount = gaRedVolConf[bVolNum].ullSectorCount;
-
-        /*  If the file is a block device, ensure it is compatible with the
-            Reliance Edge volume settings.
+        /*  Get the current file size.  The earlier stat() might have failed (if
+            the file did not exist), so fstat() to make sure we have the size.
         */
-        if(S_ISBLK(stat.st_mode))
+        if(fstat64(pDisk->fd, &stat) == -1)
         {
-            uint64_t    ullDevSize;
-            int         iSectorSize;
+            perror("fstat64");
+            ret = -RED_EIO;
+        }
+        else
+        {
+            BDEVINFO bi;
 
-            if(ioctl(pDisk->fd, BLKGETSIZE64, &ullDevSize) == -1)
+            /*  Get the sector size.
+            */
+            ret = FileDiskGetGeometry(bVolNum, &bi);
+            if(ret == 0)
             {
-                perror("Error getting block device size");
-                ret = -RED_EIO;
+                off_t block1offset = (off_t)(gaRedVolConf[bVolNum].ullSectorOffset * bi.ulSectorSize) + REDCONF_BLOCK_SIZE;
+
+                /*  If the file size is too small...
+                */
+                if(stat.st_size < block1offset)
+                {
+                    /*  Extend the file.
+                    */
+                    if(ftruncate(pDisk->fd, block1offset) == -1)
+                    {
+                        perror("ftruncate");
+                        ret = -RED_EIO;
+                    }
+                }
             }
-            else if(ioctl(pDisk->fd, BLKSSZGET, &iSectorSize) == -1)
-            {
-                perror("Error getting block device sector size");
-                ret = -RED_EIO;
-            }
-            else if(ullDevSize < ((uint64_t) ulVolSecSize * ullVolSecCount))
-            {
-                fprintf(stderr, "Error: block device size (%" PRIu64 ") is smaller than requested size (%" PRIu64 ").\n", ullDevSize, (uint64_t)(ulVolSecSize * ullVolSecCount));
-                ret = -RED_EINVAL;
-            }
-            else if(iSectorSize != ulVolSecSize)
-            {
-                fprintf(stderr, "Error: device sector size (%d) is different from the requested sector size (%d).\n", iSectorSize, ulVolSecSize);
-                ret = -RED_EINVAL;
-            }
+        }
+
+        if(ret != 0)
+        {
+            (void)FileDiskClose(bVolNum);
         }
     }
 
@@ -689,11 +835,22 @@ static REDSTATUS FileDiskOpen(
 }
 
 
+/** @brief Uninitialize a file disk.
+
+    @param bVolNum  The volume number of the volume whose block device is being
+                    uninitialized.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
 static REDSTATUS FileDiskClose(uint8_t bVolNum)
 {
     LINUXBDEV  *pDisk = &gaDisk[bVolNum];
     REDSTATUS   ret = 0;
 
+  #if REDCONF_READ_ONLY == 0
     /*  Flush before closing.  This is primarily for the tools, so that all the
         data is really committed to the media when the tool exits.
     */
@@ -701,6 +858,7 @@ static REDSTATUS FileDiskClose(uint8_t bVolNum)
     {
         ret = FileDiskFlush(bVolNum);
     }
+  #endif
 
     if(ret == 0)
     {
@@ -716,6 +874,98 @@ static REDSTATUS FileDiskClose(uint8_t bVolNum)
 }
 
 
+/** @brief Return the block device geometry.
+
+    Supported only on existing file disks.  Sector size must be specified in
+    the volume config.
+
+    @param bVolNum          The volume number of the volume whose block device
+                            geometry is being queried.
+    @param pulSectorSize    The starting sector number.
+    @param pullSectorCount  The number of sectors to read.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
+static REDSTATUS FileDiskGetGeometry(
+    uint8_t         bVolNum,
+    BDEVINFO       *pInfo)
+{
+    LINUXBDEV      *pDisk = &gaDisk[bVolNum];
+    REDSTATUS       ret = 0;
+    struct stat64   stat;
+
+    if(stat64(pDisk->pszSpec, &stat) != 0)
+    {
+        perror("Error getting block device file stats");
+        ret = -RED_EIO;
+    }
+    else if(pDisk->fIsBDev)
+    {
+        uint64_t    ullDevSize;
+        int         iSectorSize;
+
+        if(ioctl(pDisk->fd, BLKGETSIZE64, &ullDevSize) == -1)
+        {
+            perror("Error getting block device size");
+            ret = -RED_EIO;
+        }
+        else if(ioctl(pDisk->fd, BLKSSZGET, &iSectorSize) == -1)
+        {
+            perror("Error getting block device sector size");
+            ret = -RED_EIO;
+        }
+        else
+        {
+            pInfo->ulSectorSize = (uint32_t)iSectorSize;
+            pInfo->ullSectorCount = ullDevSize / iSectorSize;
+        }
+    }
+    else
+    {
+        if(gaRedVolConf[bVolNum].ulSectorSize == SECTOR_SIZE_AUTO)
+        {
+            /*  If the sector size isn't specified, any valid value will do.
+                Thus, use 512 bytes (the most common value) or the block size,
+                whichever is less.
+            */
+            pInfo->ulSectorSize = REDMIN(512U, REDCONF_BLOCK_SIZE);
+        }
+        else
+        {
+            pInfo->ulSectorSize = gaRedVolConf[bVolNum].ulSectorSize;
+        }
+
+        if(gaRedVolConf[bVolNum].ullSectorCount == SECTOR_COUNT_AUTO)
+        {
+            pInfo->ullSectorCount = stat.st_size / pInfo->ulSectorSize;
+        }
+        else
+        {
+            pInfo->ullSectorCount = gaRedVolConf[bVolNum].ullSectorOffset + gaRedVolConf[bVolNum].ullSectorCount;
+        }
+    }
+
+    return ret;
+}
+
+
+/** @brief Read sectors from a file disk.
+
+    @param bVolNum          The volume number of the volume whose block device
+                            is being read from.
+    @param ullSectorStart   The starting sector number.
+    @param ulSectorCount    The number of sectors to read.
+    @param pBuffer          The buffer into which to read the sector data.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL Read length too long.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
 static REDSTATUS FileDiskRead(
     uint8_t     bVolNum,
     uint64_t    ullSectorStart,
@@ -723,7 +973,7 @@ static REDSTATUS FileDiskRead(
     void       *pBuffer)
 {
     LINUXBDEV  *pDisk = &gaDisk[bVolNum];
-    uint32_t    ulVolSecSize = gaRedVolConf[bVolNum].ulSectorSize;
+    uint32_t    ulVolSecSize = gaRedBdevInfo[bVolNum].ulSectorSize;
     REDSTATUS   ret = 0;
 
     if(((uint64_t)ulVolSecSize * ulSectorCount) > (uint64_t)SSIZE_MAX)
@@ -744,7 +994,7 @@ static REDSTATUS FileDiskRead(
 
         result = read(pDisk->fd, pBuffer, readlen);
 
-        if(result != readlen)
+        if(result != (ssize_t)readlen)
         {
             ret = -RED_EIO;
         }
@@ -755,6 +1005,20 @@ static REDSTATUS FileDiskRead(
 
 
 #if REDCONF_READ_ONLY == 0
+/** @brief Write sectors to a file disk.
+
+    @param bVolNum          The volume number of the volume whose block device
+                            is being written to.
+    @param ullSectorStart   The starting sector number.
+    @param ulSectorCount    The number of sectors to write.
+    @param pBuffer          The buffer from which to write the sector data.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL Write length too long.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
 static REDSTATUS FileDiskWrite(
     uint8_t     bVolNum,
     uint64_t    ullSectorStart,
@@ -762,7 +1026,7 @@ static REDSTATUS FileDiskWrite(
     const void *pBuffer)
 {
     LINUXBDEV  *pDisk = &gaDisk[bVolNum];
-    uint32_t    ulVolSecSize = gaRedVolConf[bVolNum].ulSectorSize;
+    uint32_t    ulVolSecSize = gaRedBdevInfo[bVolNum].ulSectorSize;
     REDSTATUS   ret = 0;
 
     if(((uint64_t)ulVolSecSize * ulSectorCount) > (uint64_t)SSIZE_MAX)
@@ -793,16 +1057,41 @@ static REDSTATUS FileDiskWrite(
 }
 
 
-static REDSTATUS FileDiskFlush(uint8_t bVolNum)
+/** @brief Flush any caches beneath the file system.
+
+    @param bVolNum  The volume number of the volume whose block device is being
+                    flushed.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EIO    A disk I/O error occurred.
+*/
+static REDSTATUS FileDiskFlush(
+    uint8_t     bVolNum)
 {
     LINUXBDEV  *pDisk = &gaDisk[bVolNum];
     REDSTATUS   ret = 0;
 
-    if(fsync(pDisk->fd) != 0)
+    /*  Flush block devices, but not normal file disks.  In theory, we could
+        flush the file disk, but there isn't a strong need.  File disks are used
+        for two things: the image builder and tests.  The host Linux system is
+        not expected to crash, and if it does, the image builder or tests will
+        be starting over anyway.
+
+        The downside to flushing is that when testing a file disk, it makes the
+        tests much slower since it generates lots of disk I/O on the host hard
+        drive.
+    */
+    if(pDisk->fIsBDev)
     {
-        ret = -RED_EIO;
+        if(fsync(pDisk->fd) != 0)
+        {
+            ret = -RED_EIO;
+        }
     }
 
     return ret;
 }
 #endif /* REDCONF_READ_ONLY == 0 */
+

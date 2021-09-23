@@ -118,158 +118,16 @@ static uint64_t MaxFileSize(void)
 
 
 /*-------------------------------------------------------------------
-    Simulated current working directory support
+    Current working directory support
 -------------------------------------------------------------------*/
 
-
-/*  Forward declaration for red_chdir().
-*/
-static int red_stat(const char *pszPath, REDSTAT *pStat);
-
-/*  The simulated CWD functions.
-*/
-#undef chdir
 #undef getcwd
-#define chdir(path) red_chdir(path)
-#define getcwd(buf, size) red_getcwd(buf, size)
-
-
-/*  Redefine the path-based APIs to call MakeFullPath() on their arguments
-    since there is no CWD support in the red_*() APIs.
-*/
-#undef open
-#undef unlink
-#undef mkdir
-#undef rmdir
-#undef rename
-#undef link
-#undef opendir
-#define open(path, oflag) red_open(MakeFullPath(path), oflag)
-#define unlink(path) red_unlink(MakeFullPath(path))
-#define mkdir(path) red_mkdir(MakeFullPath(path))
-#define rmdir(path) red_rmdir(MakeFullPath(path))
-#define rename(old, new) red_rename(MakeFullPath(old), MakeFullPath(new))
-#define link(path, hardlink) red_link(MakeFullPath(path), MakeFullPath(hardlink))
-#define opendir(path) red_opendir(MakeFullPath(path))
-
-
-/*  Stores the simulated current working directory.
-*/
-static char szLocalCwd[1024U] = "/";
-
-
-/** @brief Change the current working directory.
-
-    This function only supports a subset of what is possible with POSIX chdir().
-
-    @param pszPath  The new current working directory.
-
-    @return Upon successful completion, 0 shall be returned.  Otherwise, -1
-            shall be returned, and errno shall be set to indicate the error.
-*/
-static int red_chdir(
-    const char *pszPath)
-{
-    uint32_t    ulIdx;
-    int         iErrno = 0;
-
-    if(strcmp(pszPath, "..") == 0)
-    {
-        uint32_t ulLastSlashIdx = 0U;
-
-        /*  Chop off the last path separator and everything after it, so that
-            "/foo/bar/baz" becomes "/foo/bar", moving the CWD up one directory.
-        */
-        for(ulIdx = 0U; szLocalCwd[ulIdx] != '\0'; ulIdx++)
-        {
-            if(szLocalCwd[ulIdx] == '/')
-            {
-                ulLastSlashIdx = ulIdx;
-            }
-        }
-
-        if(ulLastSlashIdx != 0U)
-        {
-            szLocalCwd[ulLastSlashIdx] = '\0';
-        }
-    }
-    else
-    {
-        char    szOldCwd[1024U];
-
-        /*  chdir() must have no effect on the CWD if it fails, so save the CWD
-            so we can revert it if necessary.
-        */
-        strcpy(szOldCwd, szLocalCwd);
-
-        if(pszPath[0U] == '/')
-        {
-            if(strlen(pszPath) >= sizeof(szLocalCwd))
-            {
-                iErrno = RED_ENAMETOOLONG;
-            }
-            else
-            {
-                strcpy(szLocalCwd, pszPath);
-            }
-        }
-        else
-        {
-            ulIdx = strlen(szLocalCwd);
-
-            if((ulIdx + 1U + strlen(pszPath)) >= sizeof(szLocalCwd))
-            {
-                iErrno = RED_ENAMETOOLONG;
-            }
-            else
-            {
-                if(szLocalCwd[1U] != '\0')
-                {
-                    szLocalCwd[ulIdx] = '/';
-                    ulIdx++;
-                }
-
-                strcpy(&szLocalCwd[ulIdx], pszPath);
-            }
-        }
-
-        if(iErrno == 0)
-        {
-            REDSTAT s;
-            int     iStatus;
-
-            iStatus = red_stat(szLocalCwd, &s);
-            if(iStatus != 0)
-            {
-                iErrno = errno;
-            }
-            else if(!S_ISDIR(s.st_mode))
-            {
-                iErrno = RED_ENOTDIR;
-            }
-            else
-            {
-                /*  No error, new CWD checks out.
-                */
-            }
-        }
-
-        if(iErrno != 0)
-        {
-            strcpy(szLocalCwd, szOldCwd);
-        }
-    }
-
-    if(iErrno != 0)
-    {
-        errno = iErrno;
-    }
-
-    return iErrno == 0 ? 0 : -1;
-}
+#define getcwd(buf, size) fsstress_getcwd(buf, size)
 
 
 /** @brief Retrieve the current working directory.
+
+    Wrapper for red_getcwd() which adds (inefficient) support for a NULL buffer.
 
     @param pszBuf   On successful return, populated with the current working
                     directory.  If NULL, memory will be allocated for the CWD
@@ -281,88 +139,55 @@ static int red_chdir(
             CWD which must be freed by the caller.  On failure, returns NULL
             and errno will be set.
 */
-static char *red_getcwd(
+static char *fsstress_getcwd(
     char   *pszBuf,
     size_t  nSize)
 {
-    char   *pszRet;
+    char   *pszRet = NULL;
 
+    /*  red_getcwd() does not support a NULL buffer argument, so implement that
+        here.
+    */
     if(pszBuf == NULL)
     {
-        pszRet = malloc(strlen(szLocalCwd) + 1U);
-        if(pszRet == NULL)
+        /*  Arbitrary initial value -- small enough that this test can run on
+            a constrained target.
+        */
+        nSize = 64U;
+
+        while(true)
         {
-            errno = RED_ENOMEM;
+            pszBuf = malloc(nSize);
+            if(pszBuf == NULL)
+            {
+                errno = RED_ENOMEM;
+                break;
+            }
+
+            pszRet = red_getcwd(pszBuf, (uint32_t)nSize);
+            if(pszRet == pszBuf)
+            {
+                break;
+            }
+
+            free(pszBuf);
+
+            if(errno == RED_ERANGE)
+            {
+                nSize *= 2U;
+            }
+            else
+            {
+                break;
+            }
         }
-        else
-        {
-            strcpy(pszRet, szLocalCwd);
-        }
-    }
-    else if(nSize < strlen(szLocalCwd) + 1U)
-    {
-        errno = RED_ERANGE;
-        pszRet = NULL;
     }
     else
     {
-        strcpy(pszBuf, szLocalCwd);
-        pszRet = pszBuf;
+        pszRet = red_getcwd(pszBuf, (uint32_t)nSize);
     }
 
     return pszRet;
-}
-
-
-/** @brief Make a relative path into a fully qualified path.
-
-    @param pszName  The relative path.
-
-    @return On success, a pointer to a fully qualified path.  On error, NULL.
-*/
-static const char *MakeFullPath(
-    const char     *pszName)
-{
-    #define         MAXVOLNAME 64U /* Enough for most configs. */
-    static char     aszFullPath[2U][MAXVOLNAME + 1U + 1024U];
-    static uint32_t ulWhich = 0U;
-
-    char           *pszFullPath = aszFullPath[ulWhich];
-    const char     *pszVolume = gpRedVolConf->pszPathPrefix;
-    int32_t         iLen;
-
-    if(pszName[0U] == '/')
-    {
-        iLen = RedSNPrintf(pszFullPath, sizeof(aszFullPath[0U]), "%s%s", pszVolume, pszName);
-    }
-    else if(strcmp(pszName, ".") == 0U)
-    {
-        iLen = RedSNPrintf(pszFullPath, sizeof(aszFullPath[0U]), "%s%s", pszVolume, szLocalCwd);
-    }
-    else if((szLocalCwd[0U] == '/') && (szLocalCwd[1U] == '\0'))
-    {
-        iLen = RedSNPrintf(pszFullPath, sizeof(aszFullPath[0U]), "%s/%s", pszVolume, pszName);
-    }
-    else
-    {
-        iLen = RedSNPrintf(pszFullPath, sizeof(aszFullPath[0U]), "%s%s/%s", pszVolume, szLocalCwd, pszName);
-    }
-
-    if(iLen == -1)
-    {
-        /*  Insufficient path buffer space.
-        */
-        pszFullPath = NULL;
-    }
-    else
-    {
-        /*  Toggle between two full path arrays; a kluge to make rename() and
-            link() work correctly.
-        */
-        ulWhich ^= 1U;
-    }
-
-    return pszFullPath;
 }
 
 
@@ -754,7 +579,7 @@ void FsstressDefaultParams(
 /** @brief Start fsstress.
 
     @param pParam   fsstress parameters, either from FsstressParseParams() or
-                    constructed programatically.
+                    constructed programmatically.
 
     @return Zero on success, otherwise nonzero.
 */
@@ -783,7 +608,10 @@ int FsstressStart(
     make_freq_table();
 
     while ((loopcntr <= loops) || (loops == 0)) {
-        RedSNPrintf(buf, sizeof(buf), "fss%x", getpid());
+        if (RedSNPrintf(buf, sizeof(buf), "fss%x", getpid()) < 0) {
+            RedPrintf("FsstressStart: error building name\n");
+            _exit(1);
+        }
         fd = creat(buf, 0666);
         maxfsize = (off64_t) MAXFSIZE;
         dcache_init();
@@ -991,10 +819,13 @@ static void doproc(void)
     int opno;
     opdesc_t *p;
 
-    RedSNPrintf(buf, sizeof(buf), "p%x", procid);
+    if (RedSNPrintf(buf, sizeof(buf), "p%x", procid) < 0) {
+        RedPrintf("doproc: error building name\n");
+        _exit(1);
+    }
     (void)mkdir(buf);
     if (chdir(buf) < 0 || stat64(".", &statbuf) < 0) {
-        perror(buf);
+        RedPrintf("error %d setting up test directory\n", (int)red_errno);
         _exit(1);
     }
     top_ino = statbuf.st_ino;
@@ -1005,9 +836,6 @@ static void doproc(void)
         namerand = random();
     for (opno = 0; opno < operations; opno++) {
         p = &ops[freq_table[random() % freq_table_size]];
-        if ((unsigned long)p->func < 4096)
-            abort();
-
         p->func(opno, random());
     }
     free(homedir);
@@ -1027,6 +855,10 @@ static void fent_to_name(pathname_t *name, flist_t *flp, fent_t *fep)
         append_pathname(name, "/");
     }
     i = RedSNPrintf(buf, sizeof(buf), "%c%x", flp->tag, fep->id);
+    if (i < 0) {
+        RedPrintf("fent_to_name: error building name\n");
+        _exit(1);
+    }
     namerandpad(fep->id, buf, i);
     append_pathname(name, buf);
 }
@@ -1065,6 +897,10 @@ static int generate_fname(fent_t *fep, int ft, pathname_t *name, int *idp, int *
 
     flp = &flist[ft];
     len = RedSNPrintf(buf, sizeof(buf), "%c%x", flp->tag, id = nameseq++);
+    if (len < 0) {
+        return 0;
+    }
+
     namerandpad(id, buf, len);
     if (fep) {
         fent_to_name(name, &flist[FT_DIR], fep);
@@ -2000,46 +1836,73 @@ static void write_f(int opno, long r)
 #if REDCONF_CHECKER == 1
 static void check_f(int opno, long r)
 {
-    int32_t ret;
     const char *pszVolume = gpRedVolConf->pszPathPrefix;
+    char *pszCwd;
+    int32_t ret;
 
     (void)r;
 
     errno = 0;
 
-    ret = red_transact(pszVolume);
+    /*  Unmounting resets the CWD.  Save the CWD so we can restore it when
+        the volume is mounted again.
+    */
+    pszCwd = fsstress_getcwd(NULL, 0);
+    ret = (pszCwd == NULL) ? -1 : 0;
 
+    /*  Transact so that red_umount() won't revert recent changes, even if
+        unmount transactions are disabled.
+    */
+    if(ret == 0)
+    {
+        ret = red_transact(pszVolume);
+    }
+
+    /*  The checker can only be run on unmounted volumes.
+    */
     if(ret == 0)
     {
         ret = red_umount(pszVolume);
+    }
 
-        if(ret == 0)
-        {
-            int32_t ret2;
+    if(ret == 0)
+    {
+        errno = -RedCoreVolCheck(stderr, NULL, 0U);
+        ret = (errno != 0) ? -1 : 0;
+    }
 
-            errno = -RedCoreVolCheck();
-            if(errno != 0)
-            {
-                ret = -1;
-            }
+    /*  Mount the volume for the subsequent test cases.
+    */
+    if(ret == 0)
+    {
+        ret = red_mount(pszVolume);
+    }
 
-            ret2 = red_mount(pszVolume);
-
-            if(ret == 0)
-            {
-                ret = ret2;
-            }
-
-            if(ret2 != 0)
-            {
-                exit(1);
-            }
-        }
+    /*  Restore the original CWD.  If this isn't done, check_cwd() will fail.
+    */
+    if(ret == 0)
+    {
+        ret = red_chdir(pszCwd);
+    }
+    if(pszCwd != NULL)
+    {
+        free(pszCwd);
     }
 
     if (verbose)
     {
         RedPrintf("%d/%d: check %s %d\n", procid, opno, pszVolume, errno);
+    }
+
+    /*  Nothing in this function is expected to fail.  If it does fail, abort.
+        We don't want to overlook a checker error.  Also, if this function fails
+        at certain points (while the volume is unmounted or before restoring the
+        CWD), then all subsequent operations will fail.  Just keep it simple and
+        abort if this test case doesn't succeeed.
+    */
+    if(ret != 0)
+    {
+        exit(1);
     }
 }
 #endif

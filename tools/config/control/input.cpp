@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -45,17 +45,17 @@ void Input::TryLoad()
                                     QFileDialog::ExistingFile);
     }
 
-    QString headerPath = fileDialog->ShowGetHeader();
+    QString headerPath = fileDialog->ShowGetHeader(QString());
     if(headerPath.isNull() || headerPath.isEmpty())
     {
-        emit results(InResultUserCancelled);
+        emit results(InResultUserCancelled, QString(), QString());
         return;
     }
 
-    QString codefilePath = fileDialog->ShowGetCodefile();
+    QString codefilePath = fileDialog->ShowGetCodefile(QString());
     if(codefilePath.isNull() || codefilePath.isEmpty())
     {
-        emit results(InResultUserCancelled);
+        emit results(InResultUserCancelled, QString(), QString());
         return;
     }
 
@@ -107,7 +107,7 @@ void Input::TryLoad()
         messageBox->exec();
     }
 
-    emit results(InResultSuccess);
+    emit results(InResultSuccess, headerPath, codefilePath);
 }
 
 // Helper method for TryLoad: takes a path to a text file
@@ -128,7 +128,7 @@ bool Input::getFile(const QString &filePath, QString &fileContent)
         {
             // Don't bother hanging the computer trying to read
             // this file. It's way too big.
-            emit results(InResultErrorHugeFile);
+            emit results(InResultErrorHugeFile, QString(), QString());
             return false;
         }
 
@@ -146,7 +146,7 @@ bool Input::getFile(const QString &filePath, QString &fileContent)
 
     if(!success)
     {
-        emit results(InResultFileError);
+        emit results(InResultFileError, QString(), QString());
         return false;
     }
     else return true;

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -173,7 +173,7 @@ REDSTATUS RedFseMount(
     {
         if(!gpRedVolume->fMounted)
         {
-            ret = RedCoreVolMount();
+            ret = RedCoreVolMount(RED_MOUNT_DEFAULT);
         }
 
         FseLeave();
@@ -260,7 +260,7 @@ REDSTATUS RedFseFormat(
 
     if(ret == 0)
     {
-        ret = RedCoreVolFormat();
+        ret = RedCoreVolFormat(NULL);
 
         FseLeave();
     }
@@ -628,9 +628,47 @@ REDSTATUS RedFseTransact(
 
     return ret;
 }
-#endif
+
+
+/** @brief Rollback to the previous transaction point.
+
+    Reliance Edge is a transactional file system.  All modifications, of both
+    metadata and filedata, are initially working state.  A transaction point is
+    a process whereby the working state atomically becomes the committed state,
+    replacing the previous committed state.  This call cancels all modifications
+    in the working state and reverts to the last committed state.  In other
+    words, calling this function will discard all changes made to the file
+    system since the most recent transaction point.
+
+    @param bVolNum  The volume number of the volume to rollback.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL @p bVolNum is an invalid volume number or not mounted.
+    @retval -RED_EIO    A disk I/O error occurred.
+    @retval -RED_EROFS  The file system volume is read-only.
+*/
+REDSTATUS RedFseRollback(
+    uint8_t     bVolNum)
+{
+    REDSTATUS   ret;
+
+    ret = FseEnter(bVolNum);
+
+    if(ret == 0)
+    {
+        ret = RedCoreVolRollback();
+
+        FseLeave();
+    }
+
+    return ret;
+}
+#endif /* REDCONF_READ_ONLY == 0 */
 
 /** @} */
+
 
 /** @brief Enter the file system driver.
 

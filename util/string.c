@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -160,8 +160,8 @@ static int32_t RedStrCmpUnchecked(
     /*  "The sign of a non-zero return value is determined by the sign of the
         difference between the values of the first pair of bytes (both
         interpreted as type unsigned char) that differ in the strings being
-        compared."  Use uint8_t instead of unsigned char to avoid MISRA C
-        deviations.
+        compared."  Use uint8_t which is usually equivalent to unsigned char and
+        is consistent with our general preference for fixed-width integers.
     */
     if((uint8_t)pszStr1[ulIdx] > (uint8_t)pszStr2[ulIdx])
     {
@@ -244,8 +244,9 @@ static int32_t RedStrNCmpUnchecked(
             /*  "The sign of a non-zero return value is determined by the sign
                 of the difference between the values of the first pair of bytes
                 (both interpreted as type unsigned char) that differ in the
-                strings being compared."  Use uint8_t instead of unsigned char
-                to avoid MISRA C deviations.
+                strings being compared."  Use uint8_t which is usually
+                equivalent to unsigned char and is consistent with our general
+                preference for fixed-width integers.
             */
             if((uint8_t)pszStr1[ulIdx] > (uint8_t)pszStr2[ulIdx])
             {

@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -41,6 +41,9 @@ Validity emptyStringValidator(QString value, QString &msg);
 Validity validateUsePosixApi(bool value, QString &msg);
 Validity validateUseFseApi(bool value, QString &msg);
 
+Validity validateAutomaticDiscards(bool value, QString &msg);
+Validity validatePosixFstrim(bool value, QString &msg);
+
 Validity validateMaxNameLen(unsigned long value, QString &msg);
 Validity validatePathSepChar(QString value, QString &msg);
 Validity validateTaskCount(unsigned long value, QString &msg);
@@ -53,6 +56,7 @@ Validity validateVolumeCount(unsigned long value, QString &msg);
 Validity validateVolName(QString value, QString &msg);
 Validity validateVolSectorSize(unsigned long value, QString &msg);
 Validity validateVolSectorCount(unsigned long value, QString &msg);
+Validity validateVolSectorOff(unsigned long value, QString &msg);
 Validity validateVolInodeCount(unsigned long value, QString &msg);
 Validity validateSupportedUnsupported(QString value, QString &msg);
 Validity validateDiscardSupport(QString value, QString &msg);

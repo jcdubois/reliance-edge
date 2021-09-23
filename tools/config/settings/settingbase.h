@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -32,7 +32,7 @@
 
 ///
 /// \brief  The SettingBase class is a base class for Setting<T>, allowing
-///         instances of Setting<T> derrived classes to be treated as inheriting
+///         instances of Setting<T> derived classes to be treated as inheriting
 ///         from the same type.
 ///
 class SettingBase : public Notifiable
@@ -52,8 +52,8 @@ public:
     /// \brief  ::SettingBase objects added to this list will be notified when
     ///         any value held by this ::SettingBase changes. This allows
     ///         warning buttons to be updated to indicate invalid values the
-    ///         the moment they become invalid due to a dependency (e.g.
-    ///         the buffer count is no longer valid due to POSIX "rename" being
+    ///         moment they become invalid due to a dependency (e.g. the
+    ///         buffer count is no longer valid due to POSIX "rename" being
     ///         checked).
     ///
     QList<Notifiable *> notifyList;

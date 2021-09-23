@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -28,11 +28,15 @@
 #include <redfs.h>
 #include <redcoreapi.h>
 #include <redcore.h>
+#include <redbdev.h>
 
 #if FORMAT_SUPPORTED
 
 
 /** @brief Format a file system volume.
+
+    @param pOptions Format options.  May be `NULL`, in which case the default
+                    values are used for the options.
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
@@ -40,146 +44,190 @@
     @retval -RED_EBUSY  Volume is mounted.
     @retval -RED_EIO    A disk I/O error occurred.
 */
-REDSTATUS RedVolFormat(void)
+REDSTATUS RedVolFormat(
+    const REDFMTOPT *pOptions)
 {
-    REDSTATUS   ret;
+    static const REDFMTOPT ZeroOpts = {0U};
 
-    if(gpRedVolume->fMounted)
+    REDSTATUS   ret;
+    REDSTATUS   ret2;
+    REDFMTOPT   opts = (pOptions == NULL) ? ZeroOpts : *pOptions;
+    bool        fBDevOpen = false;
+    bool        fGeoInited = false;
+
+    if(opts.ulVersion == 0U)
     {
-        ret = -RED_EBUSY;
+        opts.ulVersion = RED_DISK_LAYOUT_VERSION;
+    }
+
+  #if (REDCONF_API_POSIX == 1) && (REDCONF_NAME_MAX > (REDCONF_BLOCK_SIZE - 4U /* Inode */ - NODEHEADER_SIZE))
+    if(opts.ulVersion >= RED_DISK_LAYOUT_DIRCRC)
+    {
+        /*  REDCONF_NAME_MAX is too long for the on-disk layout with directory
+            data CRCs.
+        */
+        ret = -RED_EINVAL;
     }
     else
     {
-        ret = RedOsBDevOpen(gbRedVolNum, BDEV_O_RDWR);
+        ret = 0;
+    }
+
+    if(ret == 0)
+  #endif
+    {
+        if(gpRedVolume->fMounted)
+        {
+            ret = -RED_EBUSY;
+        }
+        else
+        {
+            ret = RedBDevOpen(gbRedVolNum, BDEV_O_RDWR);
+            fBDevOpen = (ret == 0);
+        }
     }
 
     if(ret == 0)
     {
-        MASTERBLOCK    *pMB;
-        REDSTATUS       ret2;
+        gpRedCoreVol->ulVersion = opts.ulVersion;
+
+        /*  fReadOnly might still be true from the last time the volume was
+            mounted (or from the checker).  Clear it now to avoid assertions in
+            lower-level code.
+        */
+        gpRedVolume->fReadOnly = false;
+
+        ret = RedVolInitGeometry();
+        fGeoInited = (ret == 0);
+    }
+
+    if(ret == 0)
+    {
+        MASTERBLOCK *pMB;
 
         /*  Overwrite the master block with zeroes, so that if formatting is
             interrupted, the volume will not be mountable.
         */
-        ret = RedBufferGet(BLOCK_NUM_MASTER, BFLAG_NEW | BFLAG_DIRTY, CAST_VOID_PTR_PTR(&pMB));
+        ret = RedBufferGet(BLOCK_NUM_MASTER, BFLAG_NEW | BFLAG_DIRTY, (void **)&pMB);
 
         if(ret == 0)
         {
-            ret = RedBufferFlush(BLOCK_NUM_MASTER, 1U);
+            ret = RedBufferFlushRange(BLOCK_NUM_MASTER, 1U);
 
             RedBufferDiscard(pMB);
         }
+    }
 
-        if(ret == 0)
+    if(ret == 0)
+    {
+        ret = RedIoFlush(gbRedVolNum);
+    }
+
+  #if REDCONF_IMAP_EXTERNAL == 1
+    if((ret == 0) && !gpRedCoreVol->fImapInline)
+    {
+        uint32_t ulImapBlock;
+        uint32_t ulImapBlockLimit = gpRedCoreVol->ulImapStartBN + (gpRedCoreVol->ulImapNodeCount * 2U);
+        uint16_t uImapFlags = (uint16_t)((uint32_t)BFLAG_META_IMAP | BFLAG_NEW | BFLAG_DIRTY);
+
+        /*  Technically it is only necessary to create one copy of each imap
+            node (the copy the metaroot points at), but creating them both
+            avoids headaches during disk image analysis from stale imaps left
+            over from previous formats.
+        */
+        for(ulImapBlock = gpRedCoreVol->ulImapStartBN; ulImapBlock < ulImapBlockLimit; ulImapBlock++)
         {
-            ret = RedIoFlush(gbRedVolNum);
-        }
+            IMAPNODE   *pImap;
 
-      #if REDCONF_IMAP_EXTERNAL == 1
-        if((ret == 0) && !gpRedCoreVol->fImapInline)
-        {
-            uint32_t ulImapBlock;
-            uint32_t ulImapBlockLimit = gpRedCoreVol->ulImapStartBN + (gpRedCoreVol->ulImapNodeCount * 2U);
-            uint16_t uImapFlags = (uint16_t)((uint32_t)BFLAG_META_IMAP | BFLAG_NEW | BFLAG_DIRTY);
-
-            /*  Technically it is only necessary to create one copy of each imap
-                node (the copy the metaroot points at), but creating them both
-                avoids headaches during disk image analysis from stale imaps
-                left over from previous formats.
-            */
-            for(ulImapBlock = gpRedCoreVol->ulImapStartBN; ulImapBlock < ulImapBlockLimit; ulImapBlock++)
+            ret = RedBufferGet(ulImapBlock, uImapFlags, (void **)&pImap);
+            if(ret != 0)
             {
-                IMAPNODE   *pImap;
-
-                ret = RedBufferGet(ulImapBlock, uImapFlags, CAST_VOID_PTR_PTR(&pImap));
-                if(ret != 0)
-                {
-                    break;
-                }
-
-                RedBufferPut(pImap);
+                break;
             }
+
+            RedBufferPut(pImap);
         }
-      #endif
+    }
+  #endif
 
-        /*  Write the first metaroot.
-        */
-        if(ret == 0)
-        {
-            RedMemSet(gpRedMR, 0U, sizeof(*gpRedMR));
+    /*  Write the first metaroot.
+    */
+    if(ret == 0)
+    {
+        RedMemSet(gpRedMR, 0U, sizeof(*gpRedMR));
 
-            gpRedMR->ulFreeBlocks = gpRedVolume->ulBlocksAllocable;
-          #if REDCONF_API_POSIX == 1
-            gpRedMR->ulFreeInodes = gpRedVolConf->ulInodeCount;
-          #endif
-            gpRedMR->ulAllocNextBlock = gpRedCoreVol->ulFirstAllocableBN;
-
-            /*  The branched flag is typically set automatically when bits in
-                the imap change.  It is set here explicitly because the imap has
-                only been initialized, not changed.
-            */
-            gpRedCoreVol->fBranched = true;
-
-            ret = RedVolTransact();
-        }
-
+        gpRedMR->ulFreeBlocks = gpRedVolume->ulBlocksAllocable;
       #if REDCONF_API_POSIX == 1
-        /*  Create the root directory.
+        gpRedMR->ulFreeInodes = gpRedVolConf->ulInodeCount;
+      #endif
+        gpRedMR->ulAllocNextBlock = gpRedCoreVol->ulFirstAllocableBN;
+
+        /*  The branched flag is typically set automatically when bits in the
+            imap change.  It is set here explicitly because the imap has only
+            been initialized, not changed.
         */
+        gpRedCoreVol->fBranched = true;
+
+        ret = RedVolTransact();
+    }
+
+  #if REDCONF_API_POSIX == 1
+    /*  Create the root directory.
+    */
+    if(ret == 0)
+    {
+        CINODE rootdir;
+
+        rootdir.ulInode = INODE_ROOTDIR;
+        ret = RedInodeCreate(&rootdir, INODE_INVALID, RED_S_IFDIR);
+
         if(ret == 0)
         {
-            CINODE rootdir;
+            RedInodePut(&rootdir, 0U);
+        }
+    }
+  #endif
 
-            rootdir.ulInode = INODE_ROOTDIR;
-            ret = RedInodeCreate(&rootdir, INODE_INVALID, RED_S_IFDIR);
+  #if REDCONF_API_FSE == 1
+    /*  The FSE API does not support creating or deleting files, so all the
+        inodes are created during setup.
+    */
+    if(ret == 0)
+    {
+        uint32_t ulInodeIdx;
+
+        for(ulInodeIdx = 0U; ulInodeIdx < gpRedVolConf->ulInodeCount; ulInodeIdx++)
+        {
+            CINODE ino;
+
+            ino.ulInode = INODE_FIRST_FREE + ulInodeIdx;
+            ret = RedInodeCreate(&ino, INODE_INVALID, RED_S_IFREG);
 
             if(ret == 0)
             {
-                RedInodePut(&rootdir, 0U);
+                RedInodePut(&ino, 0U);
             }
         }
-      #endif
+    }
+  #endif
 
-      #if REDCONF_API_FSE == 1
-        /*  The FSE API does not support creating or deletes files, so all the
-            inodes are created during setup.
-        */
+    /*  Write the second metaroot.
+    */
+    if(ret == 0)
+    {
+        ret = RedVolTransact();
+    }
+
+    /*  Populate and write out the master block.
+    */
+    if(ret == 0)
+    {
+        MASTERBLOCK *pMB;
+
+        ret = RedBufferGet(BLOCK_NUM_MASTER, (uint16_t)((uint32_t)BFLAG_META_MASTER | BFLAG_NEW | BFLAG_DIRTY), (void **)&pMB);
         if(ret == 0)
         {
-            uint32_t ulInodeIdx;
-
-            for(ulInodeIdx = 0U; ulInodeIdx < gpRedVolConf->ulInodeCount; ulInodeIdx++)
-            {
-                CINODE ino;
-
-                ino.ulInode = INODE_FIRST_FREE + ulInodeIdx;
-                ret = RedInodeCreate(&ino, INODE_INVALID, RED_S_IFREG);
-
-                if(ret == 0)
-                {
-                    RedInodePut(&ino, 0U);
-                }
-            }
-        }
-      #endif
-
-        /*  Write the second metaroot.
-        */
-        if(ret == 0)
-        {
-            ret = RedVolTransact();
-        }
-
-        /*  Populate and write out the master block.
-        */
-        if(ret == 0)
-        {
-            ret = RedBufferGet(BLOCK_NUM_MASTER, (uint16_t)((uint32_t)BFLAG_META_MASTER | BFLAG_NEW | BFLAG_DIRTY), CAST_VOID_PTR_PTR(&pMB));
-        }
-
-        if(ret == 0)
-        {
-            pMB->ulVersion = RED_DISK_LAYOUT_VERSION;
+            pMB->ulVersion = opts.ulVersion;
             RedStrNCpy(pMB->acBuildNum, RED_BUILD_NUMBER, sizeof(pMB->acBuildNum));
             pMB->ulFormatTime = RedOsClockGetTime();
             pMB->ulInodeCount = gpRedVolConf->ulInodeCount;
@@ -202,29 +250,36 @@ REDSTATUS RedVolFormat(void)
             pMB->bFlags |= MBFLAG_INODE_NLINK;
           #endif
 
-            ret = RedBufferFlush(BLOCK_NUM_MASTER, 1U);
+            ret = RedBufferFlushRange(BLOCK_NUM_MASTER, 1U);
 
             RedBufferPut(pMB);
         }
+    }
 
-        if(ret == 0)
-        {
-            ret = RedIoFlush(gbRedVolNum);
-        }
+    if(ret == 0)
+    {
+        ret = RedIoFlush(gbRedVolNum);
+    }
 
-        ret2 = RedOsBDevClose(gbRedVolNum);
+    if(fBDevOpen)
+    {
+        ret2 = RedBDevClose(gbRedVolNum);
         if(ret == 0)
         {
             ret = ret2;
         }
     }
 
-    /*  Discard the buffers so a subsequent format will not run into blocks it
-        does not expect.
-    */
-    if(ret == 0)
+    if(fGeoInited)
     {
-        ret = RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
+        /*  Discard the buffers so a subsequent format will not run into blocks
+            it does not expect.
+        */
+        ret2 = RedBufferDiscardRange(0U, gpRedVolume->ulBlockCount);
+        if(ret == 0)
+        {
+            ret = ret2;
+        }
     }
 
     return ret;

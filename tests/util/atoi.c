@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -93,7 +93,7 @@ int32_t RedAtoI(
           significant digits than can be represented in a uint32_t variable, the
           output is unspecified.
 
-    @param pachNum  A pointer to a constant array of hex characters.
+    @param pszNum   A pointer to a constant array of hex characters.
     @param pulNum   A pointer to the location in which to store the uint32_t
                     result.  Upon return, this value will be modified ONLY if
                     the function succeeds and the returned pointer is valid (not

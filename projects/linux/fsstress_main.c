@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -61,17 +61,22 @@ int main(
             exit(red_errno);
         }
 
-        ret = RedOsBDevConfig(bVolNum, pszDrive);
-        if(ret != 0)
+        if(pszDrive != NULL)
         {
-           fprintf(stderr, "Unexpected error %d from RedOsBDevConfig()\n", (int)ret);
-            exit(ret);
+            REDSTATUS   ret;
+
+            ret = RedOsBDevConfig(bVolNum, pszDrive);
+            if(ret != 0)
+            {
+                fprintf(stderr, "Unexpected error %d from RedOsBDevConfig()\n", (int)ret);
+                exit(ret);
+            }
         }
 
-        iErr = red_format(pszVolume);
+        iErr = RedTestFmtOptionsPreserve(pszVolume);
         if(iErr == -1)
         {
-            fprintf(stderr, "Unexpected error %d from red_format()\n", (int)red_errno);
+            fprintf(stderr, "Unexpected error %d from RedTestFmtOptionsPreserve()\n", (int)red_errno);
             exit(red_errno);
         }
 
@@ -79,6 +84,13 @@ int main(
         if(iErr == -1)
         {
             fprintf(stderr, "Unexpected error %d from red_mount()\n", (int)red_errno);
+            exit(red_errno);
+        }
+
+        iErr = red_chdir(pszVolume);
+        if(iErr == -1)
+        {
+            fprintf(stderr, "Unexpected error %d from red_chdir()\n", (int)red_errno);
             exit(red_errno);
         }
 

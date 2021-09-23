@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -64,12 +64,25 @@ private:
     Output *output;
     Input *input;
     QMessageBox *messageBox;
+    QString currCodefilePath;
+    QString currHeaderPath;
 
 public slots:
     ///
     /// \brief  Calls Output::TrySave and handles results
     ///
+    /// If the user is editing existing configuration files, this attempts to
+    /// save over the existing files and shows the save dialogs if that fails.
+    ///
     void TrySave();
+
+    ///
+    /// \brief  Calls Output::TrySave and handles results
+    ///
+    /// This forces the save as dialogs to be shown even if the user is editing
+    /// existing configuration files.
+    ///
+    void TrySaveAs();
 
     ///
     /// \brief  Calls Output::TryLoad and handles results
@@ -82,8 +95,8 @@ public slots:
     void ShowErrors();
 
 private slots:
-    void output_results(Output::Result r);
-    void input_results(Input::Result r);
+    void output_results(Output::Result r, const QString & headerPath, const QString & codefilePath);
+    void input_results(Input::Result r, const QString & headerPath, const QString & codefilePath);
 };
 
 #endif // APPLICATION_H

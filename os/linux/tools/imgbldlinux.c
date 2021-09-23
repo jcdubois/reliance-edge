@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -146,7 +146,7 @@ static int FtwCopyFile(
             {
                 strcpy(mapping.asInFilePath, pszPath);
                 ret = IbConvertPath(gVolName, pszPath, gBaseDir, mapping.asOutFilePath);
-                
+
                 if(ret == 0)
                 {
                     ret = IbCopyFile(-1, &mapping);
@@ -166,7 +166,7 @@ static int FtwCopyFile(
 
 
 #if REDCONF_API_FSE == 1
-/** @brief Reads the contents of the input directory, assignes a file index
+/** @brief Reads the contents of the input directory, assigns a file index
            to each file name, and fills a linked list structure with the
            names and indexes. Does not inspect subdirectories. Prints any
            error messages to stderr.
@@ -308,7 +308,7 @@ int IbFseBuildFileList(
 
 
 #if REDCONF_API_FSE == 1
-/** @brief  Set the the given path to be relative to its parent path if it is
+/** @brief  Set the given path to be relative to its parent path if it is
             is not an absolute path.
 */
 int IbSetRelativePath(
@@ -326,6 +326,14 @@ int IbSetRelativePath(
             fprintf(stderr, "Error: paths in mapping file must be absolute if no input directory is specified.\n");
             ret = -1;
         }
+        else if(strlen(pszPath) >= HOST_PATH_MAX)
+        {
+            /*  Not expected; the length of pszPath should have already been checked.
+            */
+            fprintf(stderr, "Error: path too long: %s\n", pszPath);
+            REDERROR();
+            ret = -1;
+        }
         else
         {
             char    asTemp[HOST_PATH_MAX];
@@ -335,7 +343,7 @@ int IbSetRelativePath(
 
             REDASSERT(indirLen != 0);
 
-            strncpy(asTemp, pszPath, HOST_PATH_MAX);
+            strcpy(asTemp, pszPath);
 
             /*  Ensure a path separator comes between the input directory
                 and the specified relative path.

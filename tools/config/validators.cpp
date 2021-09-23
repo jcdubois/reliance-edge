@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -65,6 +65,46 @@ Validity emptyStringValidator(QString value, QString &msg)
 {
     (void)value;
     (void)msg;
+    return Valid;
+}
+
+///
+/// \brief  Validator for allSettings::cbAutomaticDiscards.
+///
+///         Requires that ::allSettings and ::volumeSettings be initialized.
+///
+///         Side effect: calls ::volumeSettings->SetDiscardsEnabled.
+///
+Validity validateAutomaticDiscards(bool value, QString &msg)
+{
+    Q_ASSERT(allSettings.cbsAutomaticDiscards != NULL);
+
+    if(!volumeSettings->GetDiscardsSupported() && value)
+    {
+        msg = QString("None of the defined volumes support discards.");
+        return Invalid;
+    }
+
+    return Valid;
+}
+
+///
+/// \brief  Validator for allSettings::cbPosixFstrim.
+///
+///         Requires that ::allSettings and ::volumeSettings be initialized.
+///
+///         Side effect: calls ::volumeSettings->SetDiscardsEnabled.
+///
+Validity validatePosixFstrim(bool value, QString &msg)
+{
+    Q_ASSERT(allSettings.cbsPosixFstrim != NULL);
+
+    if(!volumeSettings->GetDiscardsSupported() && value)
+    {
+        msg = QString("None of the defined volumes support discards.");
+        return Invalid;
+    }
+
     return Valid;
 }
 
@@ -167,7 +207,7 @@ Validity validatePathSepChar(QString value, QString &msg)
         char c = value[0].toLatin1();
         if(c <= 0 || c >= 127)
         {
-            msg = "Path separator charactor must be a standard ASCII character.";
+            msg = "Path separator character must be a standard ASCII character.";
             return Invalid;
         }
         return Valid;
@@ -254,9 +294,9 @@ Validity validateHandleCount(unsigned long value, QString &msg)
 ///
 Validity validateBlockSize(unsigned long value, QString &msg)
 {
-    if(value < 256 || value > 65536)
+    if(value < 128 || value > 65536)
     {
-        msg = "Block size must be a power of 2 between 256 and 65536.";
+        msg = "Block size must be a power of 2 between 128 and 65536.";
         return Invalid;
     }
 
@@ -382,10 +422,10 @@ Validity validateVolSectorSize(unsigned long value, QString &msg)
 {
     Q_ASSERT(allSettings.cmisBlockSize != NULL);
     if(!isPowerOfTwo(value)
-            || value < 256
+            || value < 128
             || value > 65536) // 2^16. Same max in block size
     {
-        msg = "Sector size must be a power of 2 between 256 and 65536.";
+        msg = "Sector size must be a power of 2 between 128 and 65536.";
         return Invalid;
     }
 
@@ -407,37 +447,72 @@ Validity validateVolSectorSize(unsigned long value, QString &msg)
 ///
 Validity validateVolSectorCount(unsigned long value, QString &msg)
 {
-
-    unsigned long sectorSize = volumeSettings
-                                ->GetVolumes()
-                                ->at(volumeSettings->GetCurrentIndex())
-                                ->GetStSectorSize()
-                                ->GetValue();
+    VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
+	bool isAutoSize = currVolume->IsAutoSectorSize();
+    unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
     unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
 
     // Avoid division by 0
-    if(blockSize == 0 || sectorSize == 0 || blockSize < sectorSize)
+    if(blockSize == 0 || (!isAutoSize && blockSize < sectorSize))
     {
         msg = "Invalid block or sector size; cannot validate volume size.";
         return Warning;
     }
 
-    if((value / (blockSize / sectorSize)) < 5)
+    if(isAutoSize)
     {
-        msg = "Volume must be the size of at least 5 blocks.";
-        return Invalid;
+        if(value < 5)
+        {
+            msg = "Volume must be the size of at least 5 sectors.";
+            return Invalid;
+        }
+    }
+    else
+    {
+        if((value / (blockSize / sectorSize)) < 5)
+        {
+            msg = "Volume must be the size of at least 5 blocks.";
+            return Invalid;
+        }
+
+        Q_ASSERT(volumeSettings != NULL);
+        qulonglong maxSectors = getVolSizeMaxBytes() / sectorSize;
+
+        if(static_cast<qulonglong>(value) > maxSectors)
+        {
+            msg = "Volume size too large. Try selecting a higher block size. See Info tab for limits.";
+            return Invalid;
+        }
     }
 
-    Q_ASSERT(volumeSettings != NULL);
-    qulonglong maxSectors = getVolSizeMaxBytes() / sectorSize;
+    return Valid;
+}
 
-    if(static_cast<qulonglong>(value) > maxSectors)
+///
+/// \brief  Validator for a VolumeSettings::Volume::stSectorOff.
+///
+///         Assumes the validator is being run on the volume at
+///         volumeSettings::activeIndex. Requires ::allSettings and
+///         ::volumeSettings be initialized.
+///
+Validity validateVolSectorOff(unsigned long value, QString &msg)
+{
+    (void)value;
+    VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
+	bool isAutoSize = currVolume->IsAutoSectorSize();
+    unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
+    unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
+
+    // Avoid division by 0
+    if(blockSize == 0 || (!isAutoSize && blockSize < sectorSize))
     {
-        msg = "Volume size too large. Try selecting a higher block size. See Info tab for limits.";
-        return Invalid;
+        msg = "Invalid block or sector size; cannot validate volume offset.";
+        return Warning;
     }
-
-    else return Valid;
+	else
+	{
+		return Valid;
+	}
 }
 
 ///
@@ -456,6 +531,8 @@ Validity validateVolInodeCount(unsigned long value, QString &msg)
     }
 
     VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
+	bool isAutoSize = currVolume->IsAutoSectorSize();
+	bool isAutoCount = currVolume->IsAutoSectorCount();
 
     bool imapExternal = currVolume->NeedsExternalImap();
     unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
@@ -463,45 +540,48 @@ Validity validateVolInodeCount(unsigned long value, QString &msg)
     unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
 
     // Avoid division by 0
-    if(blockSize == 0 || sectorSize == 0 || blockSize < sectorSize)
+    if(blockSize == 0 || (!isAutoSize && blockSize < sectorSize))
     {
         msg = "Invalid block or sector size; cannot validate inode count.";
         return Warning;
     }
 
-    unsigned long blockCount = sectorCount / (blockSize / sectorSize);
-
-    // Number of bits in a block after subtracting the node header size.
-    unsigned long imapnodeEntries = (blockSize - 16) * 8;
-
-    unsigned long inodeTableStartBN; // BN = Block Number
-
-    if(imapExternal)
+    if(!isAutoCount && !isAutoSize)
     {
-        int imapNodeCount = 1;
-        while(((blockCount - 3) - (imapNodeCount * 2)) > (imapnodeEntries * imapNodeCount))
+        unsigned long blockCount = sectorCount / (blockSize / sectorSize);
+
+        // Number of bits in a block after subtracting the node header size.
+        unsigned long imapnodeEntries = (blockSize - 16) * 8;
+
+        unsigned long inodeTableStartBN; // BN = Block Number
+
+        if(imapExternal)
         {
-            imapNodeCount++;
+            int imapNodeCount = 1;
+            while(((blockCount - 3) - (imapNodeCount * 2)) > (imapnodeEntries * imapNodeCount))
+            {
+                imapNodeCount++;
+            }
+
+            // Imap start block number + number of imap blocks
+            inodeTableStartBN = 3 + (imapNodeCount * 2);
+        }
+        else
+        {
+            inodeTableStartBN = 3;
         }
 
-        // Imap start block number + number of imap blocks
-        inodeTableStartBN = 3 + (imapNodeCount * 2);
-    }
-    else
-    {
-        inodeTableStartBN = 3;
-    }
+        // Number of inode blocks past starting point must fit within block count
+        if((inodeTableStartBN + value * 2) > blockCount)
+        {
+            unsigned long currMax = ((long)blockCount - (long)inodeTableStartBN > 0 ?
+                                     (blockCount - inodeTableStartBN) / 2 : 0);
 
-    // Number of inode blocks past starting point must fit within block count
-    if((inodeTableStartBN + value * 2) > blockCount)
-    {
-        unsigned long currMax = ((long)blockCount - (long)inodeTableStartBN > 0 ?
-                                 (blockCount - inodeTableStartBN) / 2 : 0);
-
-        msg = QString("Inode count too high; limited by sector count. Current max: ")
-                + QString::number(currMax)
-                + QString(".");
-        return Invalid;
+            msg = QString("Inode count too high; limited by sector count. Current max: ")
+                    + QString::number(currMax)
+                    + QString(".");
+            return Invalid;
+        }
     }
 
     return Valid;
@@ -713,7 +793,7 @@ Validity validateAllocatedBuffers(unsigned long value, QString &msg)
         return Invalid;
     }
 
-    // Min buffer algorithm derrived from preprocessor logic in buffer.c
+    // Min buffer algorithm derived from preprocessor logic in redbufferpriv.h
 
     ulong dindirPointers = (getInodeEntries()
                             - allSettings.sbsDirectPtrs->GetValue())
@@ -867,14 +947,14 @@ qulonglong getVolSizeMaxBytes()
     qlonglong mrImapBits = (static_cast<qlonglong>(blockSize) - mrHeader) * 8;
     qlonglong imapBits = (static_cast<qlonglong>(blockSize) - 16) * 8;
 
-    qulonglong imapMax = mrImapBits * mrImapBits * static_cast<qulonglong>(blockSize);
+    qulonglong imapMax = mrImapBits * imapBits * static_cast<qulonglong>(blockSize);
 
     if(mrImapBits < 0 || imapBits < 0)
     {
         imapMax = 0;
     }
 
-    qulonglong blockMax_32bit = 4294967296ULL * static_cast<qlonglong>(blockSize);
+    qulonglong blockMax_32bit = 0xFFFFFFFFULL * static_cast<qlonglong>(blockSize);
 
     return (blockMax_32bit < imapMax) ? blockMax_32bit : imapMax;
 }

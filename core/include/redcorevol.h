@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -32,6 +32,10 @@
 */
 typedef struct
 {
+    /** On-disk layout version (copied from the master block).
+    */
+    uint32_t    ulVersion;
+
     /** Whether this volume uses the inline imap (true) or external imap
         (false).  Computed at initialization time based on the block count.
     */
@@ -79,6 +83,10 @@ typedef struct
     bool        fUseReservedBlocks;
   #endif
 } COREVOLUME;
+
+/*  Array of COREVOLUME structures.
+*/
+extern COREVOLUME gaRedCoreVol[REDCONF_VOLUME_COUNT];
 
 /*  Pointer to the core volume currently being accessed; populated during
     RedCoreVolSetCurrent().

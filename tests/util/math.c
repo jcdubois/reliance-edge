@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -376,7 +376,7 @@ uint64_t RedMulDiv64(
 
     @param ullDividend  The value to divide.
     @param ulDivisor    The value to divide by.
-    @param pulRemander  Populated with the remainder; may be NULL.
+    @param pulRemainder Populated with the remainder; may be NULL.
 
     @return The quotient (result of the division).
 */
@@ -480,9 +480,9 @@ uint64_t RedUint64DivMod32(
     However, it does so without ever actually dividing/modulating a 64-bit
     value, since such operations are not allowed in all environments.
 
-    @param ullDividend  The value to divide.
-    @param ullDivisor   The value to divide by.
-    @param pullRemander Populated with the remainder; may be NULL.
+    @param ullDividend   The value to divide.
+    @param ullDivisor    The value to divide by.
+    @param pullRemainder Populated with the remainder; may be NULL.
 
     @return The quotient (result of the division).
 */

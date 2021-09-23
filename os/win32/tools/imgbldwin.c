@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -99,7 +99,7 @@ int IbPosixCopyDirRecursive(
             }
             else if(sFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
-                /*  Create the direcctory, then recurse!
+                /*  Create the directory, then recurse!
                 */
                 ret = IbPosixCreateDir(pszVolName, asCurrPath, pszBaseDir);
                 if(ret == 0)
@@ -150,7 +150,7 @@ int IbPosixCopyDirRecursive(
 
 
 #if REDCONF_API_FSE == 1
-/** @brief Reads the contents of the input directory, assignes a file index
+/** @brief Reads the contents of the input directory, assigns a file index
            to each file name, and fills a linked list structure with the
            names and indexes. Does not inspect subdirectories. Prints any
            error messages to stderr.
@@ -206,7 +206,7 @@ int IbFseBuildFileList(
 
         stat = sprintf(asSPath, "%s%s*", pszDirPath, pszToAppend);
 
-        /*  Strings are aready tested; sprintf shouldn't fail.
+        /*  Strings are already tested; sprintf shouldn't fail.
         */
         REDASSERT(stat >= 0);
         (void) stat;
@@ -314,7 +314,7 @@ int IbFseBuildFileList(
 
 
 #if REDCONF_API_FSE == 1
-/** @brief  Set the the given path to be relative to its parent path if it is
+/** @brief  Set the given path to be relative to its parent path if it is
             is not an absolute path.
 */
 int IbSetRelativePath(
@@ -324,7 +324,7 @@ int IbSetRelativePath(
     int         ret;
 
     REDASSERT((pszPath != NULL) && (pszParentPath != NULL));
-    
+
     if(     (    ((pszPath[0U] >= 'A') && (pszPath[0U] <= 'Z'))
               || ((pszPath[0U] >= 'a') && (pszPath[0U] <= 'z')))
          && (pszPath[1U] == ':')
@@ -373,7 +373,7 @@ int IbSetRelativePath(
             }
         }
     }
-    
+
     return ret;
 }
 #endif

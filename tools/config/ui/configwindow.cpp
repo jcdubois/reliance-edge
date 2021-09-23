@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -42,6 +42,7 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
 
     // "General" tab
     allSettings.cbsReadonly = new CbSetting(macroNameReadonly, false, emptyBoolValidator, ui->cbReadonly);
+    allSettings.cbsAutomaticDiscards = new CbSetting(macroNameAutomaticDiscards, false, validateAutomaticDiscards, ui->cbAutomaticDiscards, ui->wbtnAutomaticDiscards);
     allSettings.rbtnsUsePosix = new RbtnSetting(macroNameUsePosix, true, validateUsePosixApi, ui->rbtnUsePosix, ui->wbtnApiRbtns);
     allSettings.rbtnsUseFse = new RbtnSetting(macroNameUseFse, false, validateUseFseApi, ui->rbtnUseFse, ui->wbtnApiRbtns);
     allSettings.cbsPosixFormat = new CbSetting(macroNamePosixFormat, true, emptyBoolValidator, ui->cbPosixFormat);
@@ -53,6 +54,8 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     allSettings.cbsPosixAtomicRename = new CbSetting(macroNamePosixRenameAtomic, false, emptyBoolValidator, ui->cbPosixAtomicRename);
     allSettings.cbsPosixFtruncate = new CbSetting(macroNamePosixFtruncate, true, emptyBoolValidator, ui->cbPosixFtruncate);
     allSettings.cbsPosixDirOps = new CbSetting(macroNamePosixDirOps, true, emptyBoolValidator, ui->cbPosixDirOps);
+    allSettings.cbsPosixCwd = new CbSetting(macroNamePosixCwd, false, emptyBoolValidator, ui->cbPosixCwd);
+    allSettings.cbsPosixFstrim = new CbSetting(macroNamePosixFstrim, false, validatePosixFstrim, ui->cbPosixFstrim, ui->wbtnFstrim);
     allSettings.sbsMaxNameLen = new SbSetting(macroNameMaxNameLen, 12, validateMaxNameLen, ui->sbFileNameLen, ui->wbtnFileNameLen);
     allSettings.pssPathSepChar = new PathSepSetting(macroNamePathSepChar, "/", validatePathSepChar, ui->cmbPathChar, ui->lePathCharCustom, ui->wbtnPathChar);
     allSettings.cbsFseFormat = new CbSetting(macroNameFseFormat, false, emptyBoolValidator, ui->cbFseFormat);
@@ -99,10 +102,11 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     allSettings.cbsTrUnlink = new CbSetting(macroNameTrUnlink, true, emptyBoolValidator, ui->cbTransactUnlink);
     allSettings.cbsTrWrite = new CbSetting(macroNameTrWrite, false, emptyBoolValidator, ui->cbTransactWrite);
     allSettings.cbsTrTruncate = new CbSetting(macroNameTrTruncate, false, emptyBoolValidator, ui->cbTransactTruncate);
-    allSettings.cbsTrSync = new CbSetting(macroNameTrSync, true, emptyBoolValidator, ui->cbTransactFSync);
+    allSettings.cbsTrFSync = new CbSetting(macroNameTrFSync, true, emptyBoolValidator, ui->cbTransactFSync);
     allSettings.cbsTrClose = new CbSetting(macroNameTrClose, true, emptyBoolValidator, ui->cbTransactClose);
     allSettings.cbsTrVolFull = new CbSetting(macroNameTrVolFull, true, validateTransactVolFull, ui->cbTransactVolFull, ui->wbtnTransactVolFull);
     allSettings.cbsTrUmount = new CbSetting(macroNameTrUmount, true, emptyBoolValidator, ui->cbTransactVolUnmount);
+    allSettings.cbsTrSync = new CbSetting(macroNameTrSync, true, emptyBoolValidator, ui->cbTransactSync);
 
     allSettings.cbsInodeBlockCount->notifyList.append(allSettings.sbsDirectPtrs);
     allSettings.cbsInodeBlockCount->notifyList.append(allSettings.sbsIndirectPtrs);
@@ -126,6 +130,9 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     allSettings.cbsPosixRename->notifyList.append(allSettings.sbsAllocatedBuffers);
     allSettings.cbsPosixAtomicRename->notifyList.append(allSettings.sbsAllocatedBuffers);
 
+    allSettings.cbsAutomaticDiscards->notifyList.append(allSettings.cbsPosixFstrim);
+    allSettings.cbsPosixFstrim->notifyList.append(allSettings.cbsPosixFstrim);
+
     // Simulate toggling to init which transaction flags
     // are available
     rbtnUsePosix_toggled(allSettings.rbtnsUsePosix->GetValue());
@@ -134,8 +141,12 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     // Must be initialized after allSettings.cmisBlockSize
     volumeSettings = new VolumeSettings(ui->lePathPrefix,
                                         ui->cmbSectorSize,
+                                        ui->cbSectorSizeAuto,
                                         ui->sbVolSize,
+                                        ui->cbVolSizeAuto,
                                         ui->labelVolSizeBytes,
+                                        ui->sbVolOff,
+                                        ui->labelVolOffBytes,
                                         ui->sbInodeCount,
                                         ui->cmbAtomicWrite,
                                         ui->cmbDiscardsSupported,
@@ -149,11 +160,14 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
                                         ui->wbtnPathPrefix,
                                         ui->wbtnSectorSize,
                                         ui->wbtnVolSize,
+                                        ui->wbtnVolOff,
                                         ui->wbtnInodeCount,
                                         ui->wbtnAtomicWrite,
                                         ui->wbtnDiscardsSupported,
                                         ui->wbtnIoRetries);
 
+    wbtns.append(ui->wbtnAutomaticDiscards);
+    wbtns.append(ui->wbtnFstrim);
     wbtns.append(ui->wbtnTransactVolFull);
     wbtns.append(ui->wbtnTransactManual);
     wbtns.append(ui->wbtnAllocatedBuffers);
@@ -166,6 +180,7 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     wbtns.append(ui->wbtnVolumeCtrls);
     wbtns.append(ui->wbtnSectorSize);
     wbtns.append(ui->wbtnVolSize);
+    wbtns.append(ui->wbtnVolOff);
     wbtns.append(ui->wbtnAtomicWrite);
     wbtns.append(ui->wbtnDiscardsSupported);
     wbtns.append(ui->wbtnInodeCount);
@@ -185,6 +200,8 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     }
     connect(ui->cbReadonly, SIGNAL(toggled(bool)),
             this, SLOT(cbReadonly_toggled(bool)));
+    connect(ui->cbAutomaticDiscards, SIGNAL(toggled(bool)),
+            this, SLOT(cbAutomaticDiscards_toggled(bool)));
     connect(ui->rbtnUsePosix, SIGNAL(toggled(bool)),
             this, SLOT(rbtnUsePosix_toggled(bool)));
     connect(ui->cbPosixRename, SIGNAL(toggled(bool)),
@@ -197,6 +214,8 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
             this, SLOT(cbPosixUnlink_toggled(bool)));
     connect(ui->cbPosixFtruncate, SIGNAL(toggled(bool)),
             this, SLOT(cbPosixFtruncate_toggled(bool)));
+    connect(ui->cbPosixFstrim, SIGNAL(toggled(bool)),
+            this, SLOT(cbPosixFstrim_toggled(bool)));
     connect(ui->cbFseTruncate, SIGNAL(toggled(bool)),
             this, SLOT(cbFseTruncate_toggled(bool)));
     connect(ui->cbInodeTimestamps, SIGNAL(toggled(bool)),
@@ -215,6 +234,8 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     // Forwarded signals
     connect(ui->actionSave, SIGNAL(triggered()),
             this, SIGNAL(saveClicked()));
+    connect(ui->actionSave_As, SIGNAL(triggered()),
+            this, SIGNAL(saveAsClicked()));
     connect(ui->actionLoad, SIGNAL(triggered()),
             this, SIGNAL(loadClicked()));
 
@@ -283,55 +304,12 @@ void ConfigWindow::timerEvent(QTimerEvent *event)
         return;
     }
 
-    // The code below assumes the General tab is selected, which should be true
-    // since this function is invoked only on startup. However, a common error
-    // is to use the WYSIWYG editor and save the .ui file while a different tab
-    // is selected, which will break this code. Assert to verify this isn't the
-    // case.
-    Q_ASSERT(ui->sawcGeneral->isVisible() == true);
-
-    // Set to content width plus about enough for a scrollbar and frames
-    int width = ui->sawcGeneral->width() + 25;
-
-    // Set to content height plus height of the rest of the window plus
-    // about enough for a scrollbar
-    int height = ui->sawcGeneral->height()
-            + this->height() - ui->scrollAreaGeneral->height()
-            + 20;
-
-    QDesktopWidget dw;
-    QRect mainScrSize = dw.availableGeometry(dw.primaryScreen());
-
-    if(width > mainScrSize.width())
-    {
-        width = mainScrSize.width();
-    }
-
-    if(height > mainScrSize.height())
-    {
-        height = mainScrSize.height();
-    }
-
-    resize(width, height);
-
-#ifdef Q_OS_LINUX
-    // On Windows, placing the resize within a timerEvent callback allows the
-    // config window to be placed by the OS. On Ubuntu, it still always opens
-    // in the corner. Move it to the middle instead.
-    if(mainScrSize.width() != 0 || mainScrSize.height() != 0)
-    {
-        int x = mainScrSize.width()/2 - width/2;
-        int y = mainScrSize.height()/2 - height/2;
-
-        move(x, y);
-    }
-#endif
-
     killTimer(timerId); // Don't call this function again.
 }
 
 void ConfigWindow::cbReadonly_toggled(bool selected)
 {
+    ui->cbAutomaticDiscards->setEnabled(!selected);
     ui->cbPosixFormat->setEnabled(!selected);
     ui->cbPosixLink->setEnabled(!selected);
     ui->cbPosixUnlink->setEnabled(!selected);
@@ -339,6 +317,7 @@ void ConfigWindow::cbReadonly_toggled(bool selected)
     ui->cbPosixRmDir->setEnabled(!selected);
     ui->framePosixRenames->setEnabled(!selected);
     ui->cbPosixFtruncate->setEnabled(!selected);
+    ui->cbPosixFstrim->setEnabled(!selected);
 
     ui->cbFseFormat->setEnabled(!selected);
     ui->cbFseSetMask->setEnabled(!selected);
@@ -350,6 +329,11 @@ void ConfigWindow::cbReadonly_toggled(bool selected)
 
     // Disable tr settings tab
     ui->tabWidget->setTabEnabled(4, !selected);
+}
+
+void ConfigWindow::cbAutomaticDiscards_toggled(bool selected)
+{
+    ui->cmbDiscardsSupported->setEnabled(ui->cbPosixFstrim->isChecked() || selected);
 }
 
 void ConfigWindow::rbtnUsePosix_toggled(bool selected)
@@ -368,6 +352,8 @@ void ConfigWindow::rbtnUsePosix_toggled(bool selected)
     ui->cbTransactTruncate->setEnabled(
                 (selected && ui->cbPosixFtruncate->isChecked())
                 || (!selected && ui->cbFseTruncate->isChecked()));
+
+    ui->cbTransactSync->setEnabled(selected);
 }
 
 void ConfigWindow::cbPosixRename_toggled(bool selected)
@@ -399,6 +385,11 @@ void ConfigWindow::cbPosixFtruncate_toggled(bool selected)
     {
         ui->cbTransactTruncate->setEnabled(selected);
     }
+}
+
+void ConfigWindow::cbPosixFstrim_toggled(bool selected)
+{
+    ui->cmbDiscardsSupported->setEnabled(ui->cbAutomaticDiscards->isChecked() || selected);
 }
 
 void ConfigWindow::cbFseTruncate_toggled(bool selected)
@@ -474,11 +465,12 @@ void ConfigWindow::actionAbout_clicked()
                 "Version " CONFIG_VERSION
                 "<br/><br/>"
                 "This utility is designed to be used to configure the Reliance "
-                "Edge file system. Documenation may be downloaded from "
+                "Edge file system. Documentation may be downloaded from "
                 "<a href='http://www.datalight.com/reliance-edge'>"
                 "datalight.com/reliance-edge</a>. For email support, contact "
-                "<a href='mailto:RelianceEdgeSupport@datalight.com'>"
-                "RelianceEdgeSupport@datalight.com</a>."
+                "<a href='mailto:support@tuxera.com'>"
+                "support@tuxera.com</a>."
                 );
     aboutBox.exec();
 }
+

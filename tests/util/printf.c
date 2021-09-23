@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -28,14 +28,14 @@
     These functions are intended to be used in portable test code, which cannot
     assume the standard I/O functions will be available.  Similar to their ANSI
     C counterparts, these functions allow formatting text strings and (if the
-    configuration allows it) outputing formatted text.  The latter ability
+    configuration allows it) outputting formatted text.  The latter ability
     relies on the RedOsOutputString() OS service function.
 
     Do *not* use these functions in code which can safely assume the standard
     I/O functions are available (e.g., in host tools code).
 
-    Do *not* use these functions from within the file system driver.  These
-    functions use variable arguments and thus are not MISRA-C:2012 compliant.
+    Do *not* use these functions from within the file system driver.  They are
+    not linked into the driver due to their relatively large size.
 */
 #include <redfs.h>
 #include <redtestutils.h>
@@ -45,9 +45,9 @@
 
 /** @brief Maximum number of bytes of output supported by RedPrintf().
 
-    Typically only Datalight code uses these functions, and that could should be
-    written to respect this limit, so it should not normally be necessary to
-    adjust this value.
+    Typically only code authored by Tuxera uses these functions, and that could
+    should be written to respect this limit, so it should not normally be
+    necessary to adjust this value.
 */
 #define OUTPUT_BUFFER_SIZE 256U
 
@@ -143,7 +143,7 @@ typedef struct
 
 
 static uint32_t ProcessFormatSegment(char *pcBuffer, uint32_t ulBufferLen, const char *pszFormat, PRINTFORMAT *pFormat, uint32_t *pulSpecifierLen);
-static uint32_t ParseFormatSpecifier(char const *pszFomat, PRINTFORMAT *pFormatType);
+static uint32_t ParseFormatSpecifier(char const *pszFormat, PRINTFORMAT *pFormatType);
 static PRINTTYPE ParseFormatType(const char *pszFormat, uint32_t *pulTypeLen);
 static uint32_t LtoA(char *pcBuffer, uint32_t ulBufferLen, int32_t lNum, uint32_t ulFillLen, char cFill);
 static uint32_t LLtoA(char *pcBuffer, uint32_t ulBufferLen, int64_t llNum, uint32_t ulFillLen, char cFill);
@@ -204,7 +204,7 @@ void RedVPrintf(
 
     if(RedVSNPrintf(achBuffer, sizeof(achBuffer), pszFormat, arglist) == -1)
     {
-        /*  Ensture the buffer is null terminated.
+        /*  Ensure the buffer is null terminated.
         */
         achBuffer[sizeof(achBuffer) - 1U] = '\0';
 
@@ -294,7 +294,7 @@ int32_t RedSNPrintf(
 
     '*' is supported to specify variable length field widths.
 
-    Hexidecimal numbers are always displayed in upper case.  Formatting codes
+    Hexadecimal numbers are always displayed in upper case.  Formatting codes
     which specifically request upper case (e.g., "%lX") are not supported.
 
     Unsupported behaviors:
@@ -719,20 +719,20 @@ static uint32_t ProcessFormatSegment(
             not found.
 */
 static uint32_t ParseFormatSpecifier(
-    char const     *pszFomat,
+    char const     *pszFormat,
     PRINTFORMAT    *pFormatType)
 {
     bool            fContainsIllegalSequence = false;
     uint32_t        ulLen = 0U;
     uint32_t        ulIdx = 0U;
 
-    while(pszFomat[ulIdx] != '\0')
+    while(pszFormat[ulIdx] != '\0')
     {
         uint32_t    ulTypeLen;
 
         /*  general output
         */
-        if(pszFomat[ulIdx] != '%')
+        if(pszFormat[ulIdx] != '%')
         {
             ulIdx++;
         }
@@ -745,15 +745,15 @@ static uint32_t ParseFormatSpecifier(
             pFormatType->ulSpecifierIdx = ulIdx;
             ulIdx++;
 
-            if(pszFomat[ulIdx] == '-')
+            if(pszFormat[ulIdx] == '-')
             {
                 pFormatType->fLeftJustified = true;
                 ulIdx++;
             }
 
-            if((pszFomat[ulIdx] == '0') || (pszFomat[ulIdx] == '_'))
+            if((pszFormat[ulIdx] == '0') || (pszFormat[ulIdx] == '_'))
             {
-                pFormatType->cFillChar = pszFomat[ulIdx];
+                pFormatType->cFillChar = pszFormat[ulIdx];
                 ulIdx++;
             }
             else
@@ -761,15 +761,15 @@ static uint32_t ParseFormatSpecifier(
                 pFormatType->cFillChar = ' ';
             }
 
-            if(pszFomat[ulIdx] == '*')
+            if(pszFormat[ulIdx] == '*')
             {
                 pFormatType->fHasVarWidth = true;
                 ulIdx++;
             }
-            else if(ISDIGIT(pszFomat[ulIdx]))
+            else if(ISDIGIT(pszFormat[ulIdx]))
             {
-                pFormatType->ulFillLen = (uint32_t)RedAtoI(&pszFomat[ulIdx]);
-                while(ISDIGIT(pszFomat[ulIdx]))
+                pFormatType->ulFillLen = (uint32_t)RedAtoI(&pszFormat[ulIdx]);
+                while(ISDIGIT(pszFormat[ulIdx]))
                 {
                     ulIdx++;
                 }
@@ -780,7 +780,7 @@ static uint32_t ParseFormatSpecifier(
                 */
             }
 
-            pFormatType->type = ParseFormatType(&pszFomat[ulIdx], &ulTypeLen);
+            pFormatType->type = ParseFormatType(&pszFormat[ulIdx], &ulTypeLen);
             if(pFormatType->type != PRFMT_UNKNOWN)
             {
                 /*  Even though we are returning successfully, keep track of
@@ -955,10 +955,10 @@ static uint32_t LtoA(
     }
     else
     {
-        char                ach[12U]; /* big enough for a int32_t in base 10 */
-        uint32_t            ulDigits = 0U;
-        uint32_t            ulNum;
-        bool                fSign;
+        char        ach[12U]; /* big enough for a int32_t in base 10 */
+        uint32_t    ulDigits = 0U;
+        uint32_t    ulNum;
+        bool        fSign;
 
         if(lNum < 0)
         {
@@ -1025,10 +1025,10 @@ static uint32_t LLtoA(
     }
     else
     {
-        char                ach[12U]; /* big enough for a int32_t in base 10 */
-        uint32_t            ulDigits = 0U;
-        uint64_t            ullNum;
-        bool                fSign;
+        char        ach[21U]; /* big enough for a int64_t in base 10 */
+        uint32_t    ulDigits = 0U;
+        uint64_t    ullNum;
+        bool        fSign;
 
         if(llNum < 0)
         {
@@ -1157,7 +1157,6 @@ static uint32_t ULLtoA(
     }
     else
     {
-
         char        ach[21U];   /* Big enough for a uint64_t in radix 10 */
         uint32_t    ulDigits = 0U;
         uint64_t    ullNumericVal = ullNum;

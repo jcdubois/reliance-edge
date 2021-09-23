@@ -1,40 +1,54 @@
-README for the Reliance Edge configuration tool source code project
+README for the Reliance Edge Configuration Utility source code project
 
 Project
 -------
 
-The configuration tool is a Qt project, built in Qt Creator 3, open source
-edition. The compiled executable for Windows may be downloaded from
-http://www.datalight.com/reliance-edge.
+The Configuration Utility is a Qt project, built in Qt Creator 3 or later, open
+source edition.  The compiled executable for Windows may be downloaded from
+http://www.datalight.com/reliance-edge.  The Visual C++ 2010 runtime libraries
+can be downloaded from Microsoft with the following link.
+
+https://www.microsoft.com/en-us/download/details.aspx?id=5555
 
 Building
 ========
 
-The configuration tool is designed for Windows and Linux.  The build processes
-described here have been tested on Windows 7 and on Ubuntu 12.04, respectively.
+The Configuration Utility is designed for Windows and Linux.  The build
+processes described here have been tested on Windows 7 and 10 and on Ubuntu
+20.04 LTS.
 
 The most basic thing you will need is a C++ compiler.  On Windows, you can
 obtain one by downloading and installing a free version of Visual Studio, such
 as Visual Studio Community Edition (see visualstudio.com).  Versions older than
-2010 may not be compatible.  On Ubuntu, you can use GCC; however, you will need
-to install GCC 4.8 to compile without errors.  This can be done from the
-console:
+2010 may not be compatible.  On Ubuntu, you can use your current version of GCC,
+however the compiler used with this configuration was version 9.3.0.
 
-    sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-    sudo apt-get update
-    sudo apt-get install gcc-4.8 g++-4.8
-    
-Next, you will need the Qt Creator package.  This can be downloaded from
-www.qt.io/download-open-source/.  If you already have an older version of Qt
-Creator installed, you may have to upgrade your Qt packages to version 5.x.
+Installing Qt Creator
+=====================
 
-Once Qt Creator and a C++ compiler are both installed, open the file
+Update your install to the latest available software packages
+    $ sudo apt-get update
+
+Install the build tools essential package
+    $ sudo apt-get install build-essential
+
+Finally install the Qt product
+    $ sudo apt-get install qtcreator
+
+This README describes using Qt 5
+    $ sudo apt install qt5-default
+
+You may also need to install OpenGL:
+    $ sudo apt-get install mesa-common-dev libglu1-mesa-dev -y
+
+Once Qt Creator, Qt, and a C++ compiler are installed, open the file
 redconfig.pro in Qt Creator.  You may need to set up the compiler, Qt version,
 and build kit before installing.  These can be found in Tools -> Options ->
 Build & Run.
 
-To build the tool, select Build -> Build All, or just click the green play
-button in the lower left-hand corner.
+The first time redconfig.pro is opened, Qt Creator will prompt you to "Configure
+Project".  Once configured, to build the tool, select Build -> Build All, or
+just click the green play button in the lower left-hand corner.
 
 Running
 =======
@@ -55,4 +69,3 @@ executable:
 In a standard Qt installation, these files should be found in Qt's bin
 directory, except qwindows.dll, which is found in the plugins directory.  The
 ICU DLL files are not needed if Qt was compiled with the option -no-icu.
-

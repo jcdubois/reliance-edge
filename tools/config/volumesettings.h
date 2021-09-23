@@ -1,7 +1,7 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                   Copyright (c) 2014-2015 Datalight, Inc.
-                       All Rights Reserved Worldwide.
+                  Copyright (c) 2014-2021 Tuxera US Inc.
+                      All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license may obtain a commercial license
+    comply with the terms of the GPLv2 license must obtain a commercial license
     before incorporating Reliance Edge into proprietary software for
     distribution in any form.  Visit http://www.datalight.com/reliance-edge for
     more information.
@@ -35,6 +35,7 @@
 #include <QListWidget>
 #include <QList>
 
+#include "settings/cbsetting.h"
 #include "settings/intsetting.h"
 #include "settings/strsetting.h"
 #include "ui/warningbtn.h"
@@ -55,7 +56,7 @@ class VolumeSettings : QObject
     Q_OBJECT
 public:
     ///
-    /// \brief  The Volume class ontains the Setting objects associated with a
+    /// \brief  The Volume class contains the Setting objects associated with a
     ///         volume.
     ///
     class Volume
@@ -65,6 +66,7 @@ public:
                WarningBtn *wbtnPathPrefix,
                WarningBtn *wbtnSectorSize,
                WarningBtn *wbtnVolSize,
+               WarningBtn *wbtnVolOff,
                WarningBtn *wbtnInodeCount,
                WarningBtn *wbtnAtomicWrite,
                WarningBtn *wbtnDiscardSupport,
@@ -72,20 +74,29 @@ public:
         StrSetting *GetStName();
         IntSetting *GetStSectorSize();
         IntSetting *GetStSectorCount();
+        IntSetting *GetStSectorOff();
         IntSetting *GetStInodeCount();
         StrSetting *GetStAtomicWrite();
         StrSetting *GetStDiscardSupport();
         IntSetting *GetStBlockIoRetries();
         bool NeedsExternalImap();
+        bool NeedsInternalImap();
+        bool IsAutoSectorSize();
+        bool IsAutoSectorCount();
+        void SetAutoSectorSize(bool);
+        void SetAutoSectorCount(bool);
 
     private:
         StrSetting stName;
         IntSetting stSectorCount;
+        IntSetting stSectorOff;
         IntSetting stInodeCount;
         IntSetting stSectorSize;
         StrSetting stAtomicWrite;
         StrSetting stDiscardSupport;
         IntSetting stBlockIoRetries;
+        bool fAutoSectorSize = false;
+        bool fAutoSectorCount = false;
     };
 
     ///
@@ -95,8 +106,12 @@ public:
     ///
     VolumeSettings(QLineEdit *pathPrefixBox,
                    QComboBox *sectorSizeBox,
+                   QCheckBox *sectorSizeAuto,
                    QSpinBox *volSizeBox,
+                   QCheckBox *volSizeAuto,
                    QLabel *volSizeLabel,
+                   QSpinBox *volOffBox,
+                   QLabel *volOffLabel,
                    QSpinBox *inodeCountBox,
                    QComboBox *atomicWriteBox,
                    QComboBox *discardSupportBox,
@@ -110,6 +125,7 @@ public:
                    WarningBtn *pathPrefixWarn,
                    WarningBtn *sectorSizeWarn,
                    WarningBtn *volSizeWarn,
+                   WarningBtn *volOffWarn,
                    WarningBtn *inodeCountWarn,
                    WarningBtn *atomicWriteWarn,
                    WarningBtn *discardSupportWarn,
@@ -237,6 +253,7 @@ private:
     void checkSetVolumeCount();
     bool checkCurrentIndex();
     void updateVolSizeBytes();
+    void updateVolOffBytes();
 
     // Getter: GetStNumVolumes
     IntSetting stVolumeCount;
@@ -252,8 +269,12 @@ private:
 
     QLineEdit *lePathPrefix;
     QSpinBox *sbVolSize;
+    QSpinBox *sbVolOff;
     QSpinBox *sbInodeCount;
+    QCheckBox *cbVolSizeAuto;
+    QCheckBox *cbSectorSizeAuto;
     QLabel *labelVolSizeBytes;
+    QLabel *labelVolOffBytes;
     QComboBox *cmbSectorSize;
     QComboBox *cmbAtomicWrite;
     QComboBox *cmbDiscardSupport;
@@ -267,6 +288,7 @@ private:
     WarningBtn *wbtnVolCount;
     WarningBtn *wbtnPathPrefix;
     WarningBtn *wbtnVolSize;
+    WarningBtn *wbtnVolOff;
     WarningBtn *wbtnInodeCount;
     WarningBtn *wbtnSectorSize;
     WarningBtn *wbtnAtomicWrite;
@@ -276,7 +298,10 @@ private:
 private slots:
     void lePathPrefix_textChanged(const QString &text);
     void cmbSectorSize_currentIndexChanged(int index);
+    void cbSectorSizeAuto_stateChanged(int state);
+    void cbVolSizeAuto_stateChanged(int state);
     void sbVolSize_valueChanged(const QString &value);
+    void sbVolOff_valueChanged(const QString &value);
     void sbInodeCount_valueChanged(const QString &value);
     void cmbAtomicWrite_currentIndexChanged(int index);
     void cmbDiscardSupport_currentIndexChanged(int index);

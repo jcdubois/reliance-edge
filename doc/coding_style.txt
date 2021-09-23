@@ -1,27 +1,23 @@
-Datalight Coding Style
-======================
+Reliance Edge Coding Style
+==========================
 
-This is a description of the Datalight Coding Style intended for third parties
-who want to contribute code to Reliance Edge.  This document is derived from the
-DDSS Coding Guidelines, but only contains a subset of the content which is most
-likely to be relevant to third party contributors.
+This is a description of the Reliance Edge Coding Style intended for third
+parties who want to contribute code to Reliance Edge.  This document is derived
+from the DDSS Coding Guidelines (an internal coding standard used by the
+Reliance and FlashFX product families), but only contains a subset of the
+content which is most likely to be relevant to third party contributors.
 
-Reliance Edge complies with the MISRA-C:2012 coding guidelines, which includes
-many rules that affect coding style.  Unfortunately the MISRA-C:2012 document is
-not freely available, and is much too long to be effectively summarized, but if
-you are familiar with the rules, adhere to them.  A few important rules of
-thumb: avoid the goto and continue keywords; avoid using more than one break
-in a loop; and avoid having more than one return from a function (single point
-of exit); default cases in every switch statement; avoid recursion; and make
-generous use of parentheses.  Outside of the file system driver, in tests and
-host tools, the MISRA-C rules are relaxed.
+Reliance Edge has a standard coding style.  Most aspects of this style are
+matters of preference, but when contributing code to Reliance Edge an effort
+should be made to use this style for the sake of consistency.  A few important
+rules of thumb: avoid the goto and continue keywords; avoid using more than one
+break in a loop; and avoid having more than one return from a function (single
+point of exit); default cases in every switch statement; avoid recursion; and
+make generous use of parentheses.  Outside of the file system driver, in tests
+and host tools, these rules are relaxed.
 
-Beyond MISRA-C, Datalight has a standard coding style.  Most aspects of this
-style are matters of preference, but when contributing code to Datalight an
-effort should be made to use this style for the sake of consistency.
-
-Below is an example function, which illustrates several key points of Datalight
-Coding Style:
+Below is an example function, which illustrates several key points of Reliance
+Edge Coding Style:
 
 /** @brief One-sentence description of what this function does.
 
@@ -70,9 +66,10 @@ tab width of 8.
 Naming
 ------
 
-Datalight uses CamelCase for functions and variables.  Type names are generally
-UPPERCASE, except for standard types like uint32_t.  Preprocessor macros are
-UPPERCASE, with words separated by underscores (for example, INODE_INVALID).
+Reliance Edge uses CamelCase for functions and variables.  Type names are
+generally UPPERCASE, except for standard types like uint32_t.  Preprocessor
+macros are UPPERCASE, with words separated by underscores (for example,
+INODE_INVALID).
 
 Doxygen Documentation
 ---------------------
@@ -100,16 +97,16 @@ static bool ExampleFunctionDeclaration(
 
 The following guidelines should be used:
 
-- Align both the data-type and the variable names, for parameters and locals, at
+- Align both the data type and the variable names, for parameters and locals, at
   the same level if practical.
 - For pointer types, the '*' belongs to the variable name---it's not part of the
-  data-type, so keep it with the variable name.
+  data type, so keep it with the variable name.
 - If useful, single line comments may be used to describe local variables (not
   a requirement).
 - For functions with no parameters, the "void" declaration does not need to be
   on a separate line.
-- Generally each variable should be declared on a separate line.  This promotes
-  readability, and facilitates having a comment for each variable.
+- Each variable should be declared on a separate line.  This promotes
+  readability and facilitates having a comment for each variable.
 
 Function declarations should be spaced apart by two blank lines between the
 closing brace which ends a function and the Doxygen comment which starts the
@@ -118,8 +115,8 @@ next.
 Curly Braces
 ------------
 
-Datalight lines up all curly braces vertically.  As per MISRA-C, curly braces
-are never omitted, even if the braces contain only a single statement.
+Reliance Edge lines up all curly braces vertically.  Curly braces are never
+omitted, even if the braces contain only a single statement.
 
 For consistency, even structure declarations and initializations should use the
 same style, with the curly braces lined up vertically.  One exception is for
@@ -129,9 +126,9 @@ fit on the same line.  If so, do it.
 Code Comments
 -------------
 
-Datalight uses the standard C style /* comments */.  C++ style comments (//) are
-never used.  The Datalight standard comment style is shown below.  This style
-applies to all general comments within the code.
+Reliance Edge uses the standard C style /* comments */.  C++ style comments (//)
+are never used.  The Reliance Edge standard comment style is shown below.  This
+style applies to all general comments within the code.
 
 /*  This is a single-line comment.
 */
@@ -148,7 +145,7 @@ if(ulFirstParameter > 0U)
 
 Note the characteristics:
 
-- The /* and */ align with the natural 4 character indentation.
+- The /* and */ align with the natural 4-character indentation.
 - The comment text is exactly indented another 4 characters.
 - The comment text starts on the same line as the opening /*.
 - The terminating */ is on its own line.
@@ -157,7 +154,7 @@ Note the characteristics:
   necessary.
 - There is usually no blank line after the comment, but rather the closing */
   "attaches" the comment to the code about which the comment refers.
-- These comments should always fit with the standard 80 character margin.
+- These comments should always fit with the standard 80-character margin.
 
 Comments where the /* and */ are on the same line may be used in a few places:
 
@@ -167,13 +164,13 @@ Comments where the /* and */ are on the same line may be used in a few places:
   the declaration.
 - For macros or preprocessor logic, where the comment fits on the same line.
 
-It is OK for such comments to exceed the 80 character margin by a small amount,
+It is OK for such comments to exceed the 80-character margin by a small amount,
 if necessary, as this sometimes promotes code readability.
 
 Indentation Style
 -----------------
 
-The general paradigm used in Datalight code is that curly braces line up
+The general paradigm used in Reliance Edge code is that curly braces line up
 vertically, and everything in between them is indented.  This should include all
 comments, labels, and preprocessor symbols.   The only things which are aligned
 at the left-most columns are:
@@ -184,7 +181,7 @@ at the left-most columns are:
 - Function declarations
 - Function open and closing curly braces
 
-Typically comments are always lined up directly with the code to which they
+Typically, comments are always lined up directly with the code to which they
 apply.
 
 Labels (when used; gotos are disallowed in driver code) are lined up two
@@ -272,15 +269,15 @@ Maximum Line Length
 -------------------
 
 The maximum line length for code need not be rigidly limited to the traditional
-80 characters.  Nevertheless the line lengths should be kept reasonable.
+80 characters.  Nevertheless, the line lengths should be kept reasonable.
 Anything longer than 100 to 120 characters should probably be broken up.  The
 most important consideration is readability---fitting on the screen is important
 for readability, but equally important is facilitating an easy understanding of
 the logical code flow.
 
-There are a few exceptions on both sides of the issue.  Generally comments
+There are a few exceptions on both sides of the issue.  Generally, comments
 should be limited to 80 characters always.  Some lines of code may exceed the
-120 character length by a large margin, if it makes the code more understandable
+120-character length by a large margin, if it makes the code more understandable
 and maintainable.  This is especially true when dealing with code that generates
 output which needs to be lined up.
 
@@ -291,8 +288,8 @@ Maximum Display Output Line Length
 ----------------------------------
 
 Any code which displays TTY style output, whether on a screen or a terminal,
-should be constructed so the output is readable and wraps properly on an 80
-character wide display.  This primarily applies to the "standard" output from
+should be constructed so the output is readable and wraps properly on an
+80-character wide display.  This primarily applies to the "standard" output from
 various tests and tools as well as syntax output for those tests and tools;
 debug output can violate this rule.
 
@@ -325,7 +322,7 @@ notational element.  For example:
 Hungarian Notation
 ------------------
 
-Datalight uses Hungarian notation.  The following type prefixes are used:
+Reliance Edge uses Hungarian notation.  The following type prefixes are used:
 
 Type Prefix | Meaning
 ----------- | -------
