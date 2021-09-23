@@ -9,7 +9,7 @@ language: c
 compiler:
   - gcc
 
-script: make -C projects/linux clean all && make -C project/linux/host clean all
+script: make -C projects/linux clean all && make -C projects/linux/host clean all
 
 before_install:
   - sudo apt-get -qq update
