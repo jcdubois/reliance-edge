@@ -3,7 +3,7 @@ language: c
 compiler:
   - gcc
 
-script: make -C projects/linux && make -C projects/linux/host
+script: make -C projects/linux clean all && make -C projects/linux/host clean all
 
 notifications:
   email:

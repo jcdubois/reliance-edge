@@ -10,8 +10,6 @@ INCLUDES=					\
 
 EXTRA_CFLAGS +=-Wall
 EXTRA_CFLAGS +=-Werror
-EXTRA_CFLAGS +=-Wno-switch-break
-EXTRA_CFLAGS +=-Wno-pointer-to-int-cast
 EXTRA_CFLAGS +=$(call cc-option,-Wframe-larger-than=4096)
 EXTRA_CFLAGS += -D_FILE_OFFSET_BITS=64 -D_XOPEN_SOURCE=500
 
