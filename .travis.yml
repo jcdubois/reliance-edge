@@ -5,6 +5,10 @@ compiler:
 
 script: make -C projects/linux clean all && make -C projects/linux/host clean all
 
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libfuse-dev
+
 notifications:
   email:
     recipients:
