@@ -23,5 +23,5 @@ addons:
       description: "Build submitted via Travis CI"
     notification_email: jcd@tribudubois.net
     build_command_prepend: "echo no configure"
-    build_command:   "make -C projects/linux clean all"
+    build_command:   "make -C projects/linux clean all; make -C projects/linux/host clean all"
     branch_pattern: coverity_scan
