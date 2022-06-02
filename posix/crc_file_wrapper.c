@@ -2,6 +2,7 @@
 
 #if (REDCONF_API_POSIX == 1) && (REDCONF_ATTRIBUTES_MAX > 0)
 
+#include <redmisc.h>
 #include <redutils.h>
 
 #define BUFFER_SIZE 4096
@@ -26,6 +27,17 @@ static int32_t crc_file_wrapper_compute_crc(int32_t iFildes, uint32_t *pulCRC) {
   }
 
   return (int32_t)llOffset;
+}
+
+
+int32_t crc_file_wrapper_stat(const char *pszPath, REDSTAT *pStat) {
+  int32_t iRet = red_stat(pszPath, pStat);
+
+  if ((iRet != -1) && RED_S_ISREG(pStat->st_mode)) {
+    iRet = crc_file_wrapper_check(pszPath);
+  }
+
+  return iRet;
 }
 
 int32_t crc_file_wrapper_open(const char *pszPath, uint32_t ulOpenMode) {

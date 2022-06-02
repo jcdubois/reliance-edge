@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,20 +17,27 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
-    @brief Defines OS-specific types for use in common code.
+    @brief Defines U-Boot block types.
 */
 #ifndef REDOSBDEV_H
 #define REDOSBDEV_H
 
 
-REDSTATUS RedOsBDevConfig2(uint8_t bVolNum, struct blk_desc * block_dev, disk_partition_t * fs_partition);
+/*  This array holds the block device handles and partition information for
+    the various redfs volumes.
+*/
+typedef struct UBOOT_DEV {
+    struct blk_desc        *block_dev;   /* U-Boot native structure */
+    struct disk_partition  *fs_partition;  /* U-Boot native structure */
+} UBOOT_DEV;
 
 
-#endif /* #ifndef REDOSBDEV_H */
+#endif /* REDOSBDEV_H */
 

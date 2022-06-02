@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 #ifndef ALLSETTINGS_H
 #define ALLSETTINGS_H
@@ -102,16 +103,20 @@ struct AllSettings
     RbtnSetting *rbtnsUsePosix;
     RbtnSetting *rbtnsUseFse;
     CbSetting *cbsPosixFormat;
+    CbSetting *cbsPosixSymlink;
     CbSetting *cbsPosixLink;
     CbSetting *cbsPosixUnlink;
+    CbSetting *cbsDeleteOpen;
     CbSetting *cbsPosixMkdir;
     CbSetting *cbsPosixRmdir;
     CbSetting *cbsPosixRename;
     CbSetting *cbsPosixAtomicRename;
     CbSetting *cbsPosixFtruncate;
+    CbSetting *cbsPosixFreserve;
     CbSetting *cbsPosixDirOps;
     CbSetting *cbsPosixCwd;
     CbSetting *cbsPosixFstrim;
+    CbSetting *cbsPosixOwnerPerm;
     SbSetting *sbsMaxNameLen;
     PathSepSetting *pssPathSepChar;
     SbSetting *sbsTaskCount;
@@ -171,16 +176,20 @@ extern const QString macroNameAutomaticDiscards;
 extern const QString macroNameUsePosix;
 extern const QString macroNameUseFse;
 extern const QString macroNamePosixFormat;
+extern const QString macroNamePosixSymlink;
 extern const QString macroNamePosixLink;
 extern const QString macroNamePosixUnlink;
+extern const QString macroNameDeleteOpen;
 extern const QString macroNamePosixMkdir;
 extern const QString macroNamePosixRmdir;
 extern const QString macroNamePosixRename;
 extern const QString macroNamePosixRenameAtomic;
 extern const QString macroNamePosixFtruncate;
+extern const QString macroNamePosixFreserve;
 extern const QString macroNamePosixDirOps;
 extern const QString macroNamePosixCwd;
 extern const QString macroNamePosixFstrim;
+extern const QString macroNamePosixOwnerPerm;
 extern const QString macroNameMaxNameLen;
 extern const QString macroNamePathSepChar;
 extern const QString macroNameTaskCount;

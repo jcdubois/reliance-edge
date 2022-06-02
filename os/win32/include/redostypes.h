@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Defines OS-specific types for use in common code.
@@ -36,6 +37,20 @@
     common code should treat this as an opaque type.
 */
 typedef uint64_t REDTIMESTAMP;
+
+/** @brief Implementation-defined block device context type.
+
+    The underlying type of the context parameter passed into RedOsBDevConfig().
+    This can be anything that is convenient for the implementation: a void
+    pointer, a pointer to an opaque structure, a string (`const char *`), an
+    integer, etc.
+
+    Common code should treat this as an opaque type.  OS-specific code may
+    assume the OS-specific underlying type.  In code for the host tools,
+    compiled with the host operating systems (e.g., Windows or Linux), this is
+    assumed to be a string (`const char *`).
+*/
+typedef const char *REDBDEVCTX;
 
 
 #endif

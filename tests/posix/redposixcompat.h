@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Defines macros which make the Reliance Edge POSIX-like API look more
@@ -99,6 +100,7 @@
 #undef lseek
 #undef ftruncate
 #undef fstat
+#undef stat
 #undef opendir
 #undef readdir
 #undef rewinddir
@@ -122,6 +124,7 @@
 #define ftruncate(fd, size) crc_file_wrapper_ftruncate(fd, size)
 #define fstat(fd, stat) crc_file_wrapper_fstat(fd, stat)
 #define fstat64(fd, stat) fstat(fd, stat)
+#define stat(path, stat) crc_file_wrapper_stat(path, stat)
 #define opendir(path) red_opendir(path)
 #define readdir(dirp) red_readdir(dirp)
 #define readdir64(dirp) readdir(dirp)

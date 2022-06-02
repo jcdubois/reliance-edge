@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 #include <QMessageBox>
 #include <QDesktopWidget>
@@ -46,29 +47,32 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     allSettings.rbtnsUsePosix = new RbtnSetting(macroNameUsePosix, true, validateUsePosixApi, ui->rbtnUsePosix, ui->wbtnApiRbtns);
     allSettings.rbtnsUseFse = new RbtnSetting(macroNameUseFse, false, validateUseFseApi, ui->rbtnUseFse, ui->wbtnApiRbtns);
     allSettings.cbsPosixFormat = new CbSetting(macroNamePosixFormat, true, emptyBoolValidator, ui->cbPosixFormat);
+    allSettings.cbsPosixSymlink = new CbSetting(macroNamePosixSymlink, false, emptyBoolValidator, ui->cbPosixSymlink);
     allSettings.cbsPosixLink = new CbSetting(macroNamePosixLink, true, emptyBoolValidator, ui->cbPosixLink);
     allSettings.cbsPosixUnlink = new CbSetting(macroNamePosixUnlink, true, emptyBoolValidator, ui->cbPosixUnlink);
+    allSettings.cbsDeleteOpen = new CbSetting(macroNameDeleteOpen, false, emptyBoolValidator, ui->cbDeleteOpen);
     allSettings.cbsPosixMkdir = new CbSetting(macroNamePosixMkdir, true, emptyBoolValidator, ui->cbPosixMkdir);
     allSettings.cbsPosixRmdir = new CbSetting(macroNamePosixRmdir, true, emptyBoolValidator, ui->cbPosixRmDir);
-    allSettings.cbsPosixRename = new CbSetting(macroNamePosixRename, false, emptyBoolValidator, ui->cbPosixRename);
-    allSettings.cbsPosixAtomicRename = new CbSetting(macroNamePosixRenameAtomic, false, emptyBoolValidator, ui->cbPosixAtomicRename);
+    allSettings.cbsPosixRename = new CbSetting(macroNamePosixRename, true, emptyBoolValidator, ui->cbPosixRename);
+    allSettings.cbsPosixAtomicRename = new CbSetting(macroNamePosixRenameAtomic, true, emptyBoolValidator, ui->cbPosixAtomicRename);
     allSettings.cbsPosixFtruncate = new CbSetting(macroNamePosixFtruncate, true, emptyBoolValidator, ui->cbPosixFtruncate);
+    allSettings.cbsPosixFreserve = new CbSetting(macroNamePosixFreserve, false, emptyBoolValidator, ui->cbPosixFreserve);
     allSettings.cbsPosixDirOps = new CbSetting(macroNamePosixDirOps, true, emptyBoolValidator, ui->cbPosixDirOps);
-    allSettings.cbsPosixCwd = new CbSetting(macroNamePosixCwd, false, emptyBoolValidator, ui->cbPosixCwd);
+    allSettings.cbsPosixCwd = new CbSetting(macroNamePosixCwd, true, emptyBoolValidator, ui->cbPosixCwd);
     allSettings.cbsPosixFstrim = new CbSetting(macroNamePosixFstrim, false, validatePosixFstrim, ui->cbPosixFstrim, ui->wbtnFstrim);
+    allSettings.cbsPosixOwnerPerm = new CbSetting(macroNamePosixOwnerPerm, false, emptyBoolValidator, ui->cbPosixOwnerPerm);
     allSettings.sbsMaxNameLen = new SbSetting(macroNameMaxNameLen, 12, validateMaxNameLen, ui->sbFileNameLen, ui->wbtnFileNameLen);
     allSettings.pssPathSepChar = new PathSepSetting(macroNamePathSepChar, "/", validatePathSepChar, ui->cmbPathChar, ui->lePathCharCustom, ui->wbtnPathChar);
-    allSettings.cbsFseFormat = new CbSetting(macroNameFseFormat, false, emptyBoolValidator, ui->cbFseFormat);
+    allSettings.cbsFseFormat = new CbSetting(macroNameFseFormat, true, emptyBoolValidator, ui->cbFseFormat);
     allSettings.cbsFseTruncate = new CbSetting(macroNameFseTruncate, true, emptyBoolValidator, ui->cbFseTruncate);
     allSettings.cbsFseGetMask = new CbSetting(macroNameFseGetMask, true, emptyBoolValidator, ui->cbFseGetMask);
     allSettings.cbsFseSetMask = new CbSetting(macroNameFseSetMask, true, emptyBoolValidator, ui->cbFseSetMask);
     allSettings.sbsTaskCount = new SbSetting(macroNameTaskCount, 10, validateTaskCount, ui->sbTaskCount, ui->wbtnTaskCount);
     allSettings.sbsHandleCount = new SbSetting(macroNameHandleCount, 10, validateHandleCount, ui->sbHandleCount, ui->wbtnHandleCount);
-    allSettings.cbsDebugEnableOutput = new CbSetting(macroNameDebugEnableOutput, false, emptyBoolValidator, ui->cbEnableOutput);
+    allSettings.cbsDebugEnableOutput = new CbSetting(macroNameDebugEnableOutput, true, emptyBoolValidator, ui->cbEnableOutput);
     allSettings.cbsDebugProcesAsserts = new CbSetting(macroNameDebugProcesAsserts, false, emptyBoolValidator, ui->cbProcessAsserts);
 
-    // "Volumes" tab (Note: most settings handled
-    // by VolumeSettings
+    // "Volumes" tab (note: most settings handled by VolumeSettings)
     allSettings.cmisBlockSize = new CmbIntSetting(macroNameBlockSize, 512, validateBlockSize, ui->cmbBlockSize, ui->wbtnBlockSize);
 
     // "Data Storage" tab
@@ -140,8 +144,7 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
     allSettings.cbsAutomaticDiscards->notifyList.append(allSettings.cbsPosixFstrim);
     allSettings.cbsPosixFstrim->notifyList.append(allSettings.cbsPosixFstrim);
 
-    // Simulate toggling to init which transaction flags
-    // are available
+    // Simulate toggling to init which transaction flags are available
     rbtnUsePosix_toggled(allSettings.rbtnsUsePosix->GetValue());
     ui->cbPosixAtomicRename->setEnabled(allSettings.cbsPosixRename->GetValue());
 
@@ -155,6 +158,7 @@ ConfigWindow::ConfigWindow(QWidget *parent) :
                                         ui->sbVolOff,
                                         ui->labelVolOffBytes,
                                         ui->sbInodeCount,
+                                        ui->cbInodeCountAuto,
                                         ui->cmbAtomicWrite,
                                         ui->cmbDiscardsSupported,
                                         ui->cbEnableRetries,
@@ -320,10 +324,12 @@ void ConfigWindow::cbReadonly_toggled(bool selected)
     ui->cbPosixFormat->setEnabled(!selected);
     ui->cbPosixLink->setEnabled(!selected);
     ui->cbPosixUnlink->setEnabled(!selected);
+    ui->cbDeleteOpen->setEnabled(!selected);
     ui->cbPosixMkdir->setEnabled(!selected);
     ui->cbPosixRmDir->setEnabled(!selected);
     ui->framePosixRenames->setEnabled(!selected);
     ui->cbPosixFtruncate->setEnabled(!selected);
+    ui->cbPosixFreserve->setEnabled(!selected);
     ui->cbPosixFstrim->setEnabled(!selected);
 
     ui->cbFseFormat->setEnabled(!selected);
@@ -473,11 +479,10 @@ void ConfigWindow::actionAbout_clicked()
                 "<br/><br/>"
                 "This utility is designed to be used to configure the Reliance "
                 "Edge file system. Documentation may be downloaded from "
-                "<a href='http://www.datalight.com/reliance-edge'>"
-                "datalight.com/reliance-edge</a>. For email support, contact "
+                "<a href='https://www.tuxera.com/products/reliance-edge/'>"
+                "tuxera.com/products/reliance-edge</a>. For email support, contact "
                 "<a href='mailto:support@tuxera.com'>"
                 "support@tuxera.com</a>."
                 );
     aboutBox.exec();
 }
-

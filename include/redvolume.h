@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
 */
@@ -29,6 +30,21 @@
 
 
 #include "redexclude.h" /* for DISCARD_SUPPORTED */
+#include <redosconf.h> /* for REDOSCONF_MUTABLE_VOLCONF */
+
+
+/** Indicates that the sector size should be queried from the block device.
+*/
+#define SECTOR_SIZE_AUTO    0U
+
+/** Indicates that the sector count should be queried from the block device.
+*/
+#define SECTOR_COUNT_AUTO   0U
+
+
+/** Indicates that the inode count should be automatically computed.
+*/
+#define INODE_COUNT_AUTO    0U
 
 
 /** @brief Per-volume configuration structure.
@@ -66,10 +82,14 @@ typedef struct
     */
     bool        fAtomicSectorWrite;
 
-    /** This is the maximum number of inodes (files and directories).  This
-        number includes the root directory inode (inode 2; created during
-        format), but does not include inodes 0 or 1, which do not exist on
-        disk.  The number of inodes cannot be less than 1.
+    /** This is the default number of inodes for which the formatter will
+        reserve space.  The inode count for a volume is the maximum number of
+        files and directories that can exist on the volume.  This count includes
+        the root directory inode (inode 2; created during format), but does not
+        include inodes 0 or 1, which do not exist on disk.  A value of
+        #INODE_COUNT_AUTO (0) tells the formatter to pick an inode count which
+        is reasonable for the volume size.  The value specified here can be
+        overridden at run-time via format options.
     */
     uint32_t    ulInodeCount;
 
@@ -87,7 +107,13 @@ typedef struct
   #endif
 } VOLCONF;
 
-extern const VOLCONF gaRedVolConf[REDCONF_VOLUME_COUNT];
+#if REDOSCONF_MUTABLE_VOLCONF == 1
+  #define VOLCONF_CONST
+#else
+  #define VOLCONF_CONST const
+#endif
+
+extern VOLCONF_CONST VOLCONF gaRedVolConf[REDCONF_VOLUME_COUNT];
 extern const VOLCONF * CONST_IF_ONE_VOLUME gpRedVolConf;
 
 

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Utility for iterating Reliance Edge committed-state metadata.
@@ -96,6 +97,10 @@ typedef struct
     */
     uint32_t    ulInodeImapNodes;
   #endif
+
+    /** This is the maximum number of inodes (files and directories).
+    */
+    uint32_t    ulInodeCount;
 } MDICTX;
 
 
@@ -200,10 +205,10 @@ REDSTATUS RedMetadataIterate(
 
     /*  Volume geometry needs to be initialized to parse the volume.
     */
-    ret = RedVolInitGeometry();
+    ret = RedVolInitBlockGeometry();
     if(ret != 0)
     {
-        fprintf(stderr, "Unexpected error %d from RedVolInitGeometry()\n", (int)ret);
+        fprintf(stderr, "Unexpected error %d from RedVolInitBlockGeometry()\n", (int)ret);
         goto Close;
     }
 
@@ -261,7 +266,7 @@ static REDSTATUS MDIter(
             RAM so we can parse the inodes without rereading the imap blocks.
             Note that each inode has two bits in the imap.
         */
-        ctx.ulInodeImapNodes = ((gpRedVolConf->ulInodeCount * 2U) + (IMAPNODE_ENTRIES - 1U)) / IMAPNODE_ENTRIES;
+        ctx.ulInodeImapNodes = ((ctx.ulInodeCount * 2U) + (IMAPNODE_ENTRIES - 1U)) / IMAPNODE_ENTRIES;
         ctx.pbInodeImap = malloc((size_t)ctx.ulInodeImapNodes * IMAPNODE_ENTRY_BYTES);
         if(ctx.pbInodeImap == NULL)
         {
@@ -347,16 +352,20 @@ static REDSTATUS MDIterMB(
         pCtx->ullSeqMax = hdr.ullSequence;
     }
 
-    /*  Save the on-disk layout number so we know how to interpret the other
-        metadata.
+    /*  Save the on-disk layout number, block count, and inode count so we know
+        how to interpret the other metadata.
     */
     if(pMB->hdr.ulSignature == SWAP32(META_SIG_MASTER))
     {
         pCtx->ulVersion = SWAP32(pMB->ulVersion);
+        pCtx->ulInodeCount = SWAP32(pMB->ulInodeCount);
+        gpRedVolume->ulBlockCount = SWAP32(pMB->ulBlockCount);
     }
     else
     {
         pCtx->ulVersion = pMB->ulVersion;
+        pCtx->ulInodeCount = pMB->ulInodeCount;
+        gpRedVolume->ulBlockCount = pMB->ulBlockCount;
     }
 
     /*  If the version is junk, assume the default.
@@ -366,7 +375,18 @@ static REDSTATUS MDIterMB(
         pCtx->ulVersion = RED_DISK_LAYOUT_VERSION;
     }
 
-    ret = pCtx->pParam->pfnCallback(pCtx->pParam->pContext, MDTYPE_MASTER, 0U, pMB);
+    gpRedCoreVol->ulInodeCount = pCtx->ulInodeCount;
+
+    ret = RedVolInitBlockLayout();
+
+    if(ret != 0)
+    {
+        fprintf(stderr, "Unexpected error %d from RedVolInitBlockLayout()\n", (int)ret);
+    }
+    else
+    {
+        ret = pCtx->pParam->pfnCallback(pCtx->pParam->pContext, MDTYPE_MASTER, 0U, pMB);
+    }
 
   Out:
 
@@ -603,7 +623,7 @@ static REDSTATUS MDIterInodes(
         goto Out;
     }
 
-    for(ulInode = INODE_FIRST_VALID; ulInode < (INODE_FIRST_VALID + gpRedVolConf->ulInodeCount); ulInode++)
+    for(ulInode = INODE_FIRST_VALID; ulInode < (INODE_FIRST_VALID + pCtx->ulInodeCount); ulInode++)
     {
         uint32_t    ulBlock = InodeBlock(pCtx, ulInode);
         uint32_t    i;
@@ -655,7 +675,11 @@ static REDSTATUS MDIterInodes(
 
         fEndSwap = (pInode->hdr.ulSignature == SWAP32(META_SIG_INODE));
 
+      #if REDCONF_API_POSIX == 1
         fIsDirectory = RED_S_ISDIR(fEndSwap ? SWAP16(pInode->uMode) : pInode->uMode);
+      #else
+        fIsDirectory = false;
+      #endif
         (void)fIsDirectory; /* Unused in some configurations. */
 
         for(i = 0U; i < INODE_ENTRIES; i++)

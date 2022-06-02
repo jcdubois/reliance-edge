@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Implements the Reliance Edge file system formatter.
@@ -30,7 +31,10 @@
 #include <redcore.h>
 #include <redbdev.h>
 
+
 #if FORMAT_SUPPORTED
+
+static uint32_t ComputeInodeCount(void);
 
 
 /** @brief Format a file system volume.
@@ -49,7 +53,7 @@ REDSTATUS RedVolFormat(
 {
     static const REDFMTOPT ZeroOpts = {0U};
 
-    REDSTATUS   ret;
+    REDSTATUS   ret = 0;
     REDSTATUS   ret2;
     REDFMTOPT   opts = (pOptions == NULL) ? ZeroOpts : *pOptions;
     bool        fBDevOpen = false;
@@ -57,24 +61,25 @@ REDSTATUS RedVolFormat(
 
     if(opts.ulVersion == 0U)
     {
+        /*  Version 0 means to use the default.
+        */
         opts.ulVersion = RED_DISK_LAYOUT_VERSION;
     }
-
-  #if (REDCONF_API_POSIX == 1) && (REDCONF_NAME_MAX > (REDCONF_BLOCK_SIZE - 4U /* Inode */ - NODEHEADER_SIZE))
-    if(opts.ulVersion >= RED_DISK_LAYOUT_DIRCRC)
+    else if(!RED_DISK_LAYOUT_IS_SUPPORTED(opts.ulVersion))
     {
-        /*  REDCONF_NAME_MAX is too long for the on-disk layout with directory
-            data CRCs.
+        /*  Return an error if the version number is invalid or if it is not
+            supported by the compile-time configuration of the formatter and
+            driver.
         */
         ret = -RED_EINVAL;
     }
     else
     {
-        ret = 0;
+        /*  Use the specified on-disk layout.
+        */
     }
 
     if(ret == 0)
-  #endif
     {
         if(gpRedVolume->fMounted)
         {
@@ -89,7 +94,34 @@ REDSTATUS RedVolFormat(
 
     if(ret == 0)
     {
+        ret = RedVolInitBlockGeometry();
+        fGeoInited = (ret == 0);
+    }
+
+    if(ret == 0)
+    {
+        uint32_t ulInodeCount;
+
+        if(opts.ulInodeCount == RED_FORMAT_INODE_COUNT_CONFIG)
+        {
+            ulInodeCount = gpRedVolConf->ulInodeCount;
+        }
+        else if(opts.ulInodeCount == RED_FORMAT_INODE_COUNT_AUTO)
+        {
+            ulInodeCount = INODE_COUNT_AUTO;
+        }
+        else
+        {
+            ulInodeCount = opts.ulInodeCount;
+        }
+
+        if(ulInodeCount == INODE_COUNT_AUTO)
+        {
+            ulInodeCount = ComputeInodeCount();
+        }
+
         gpRedCoreVol->ulVersion = opts.ulVersion;
+        gpRedCoreVol->ulInodeCount = ulInodeCount;
 
         /*  fReadOnly might still be true from the last time the volume was
             mounted (or from the checker).  Clear it now to avoid assertions in
@@ -97,8 +129,7 @@ REDSTATUS RedVolFormat(
         */
         gpRedVolume->fReadOnly = false;
 
-        ret = RedVolInitGeometry();
-        fGeoInited = (ret == 0);
+        ret = RedVolInitBlockLayout();
     }
 
     if(ret == 0)
@@ -158,7 +189,7 @@ REDSTATUS RedVolFormat(
 
         gpRedMR->ulFreeBlocks = gpRedVolume->ulBlocksAllocable;
       #if REDCONF_API_POSIX == 1
-        gpRedMR->ulFreeInodes = gpRedVolConf->ulInodeCount;
+        gpRedMR->ulFreeInodes = gpRedCoreVol->ulInodeCount;
       #endif
         gpRedMR->ulAllocNextBlock = gpRedCoreVol->ulFirstAllocableBN;
 
@@ -179,7 +210,7 @@ REDSTATUS RedVolFormat(
         CINODE rootdir;
 
         rootdir.ulInode = INODE_ROOTDIR;
-        ret = RedInodeCreate(&rootdir, INODE_INVALID, RED_S_IFDIR);
+        ret = RedInodeCreate(&rootdir, NULL, RED_S_IFDIR | (RED_S_IRWXUGO & RED_S_IFVALID));
 
         if(ret == 0)
         {
@@ -196,12 +227,12 @@ REDSTATUS RedVolFormat(
     {
         uint32_t ulInodeIdx;
 
-        for(ulInodeIdx = 0U; ulInodeIdx < gpRedVolConf->ulInodeCount; ulInodeIdx++)
+        for(ulInodeIdx = 0U; ulInodeIdx < gpRedCoreVol->ulInodeCount; ulInodeIdx++)
         {
             CINODE ino;
 
             ino.ulInode = INODE_FIRST_FREE + ulInodeIdx;
-            ret = RedInodeCreate(&ino, INODE_INVALID, RED_S_IFREG);
+            ret = RedInodeCreate(&ino, NULL, RED_S_IFREG);
 
             if(ret == 0)
             {
@@ -230,7 +261,7 @@ REDSTATUS RedVolFormat(
             pMB->ulVersion = opts.ulVersion;
             RedStrNCpy(pMB->acBuildNum, RED_BUILD_NUMBER, sizeof(pMB->acBuildNum));
             pMB->ulFormatTime = RedOsClockGetTime();
-            pMB->ulInodeCount = gpRedVolConf->ulInodeCount;
+            pMB->ulInodeCount = gpRedCoreVol->ulInodeCount;
             pMB->ulBlockCount = gpRedVolume->ulBlockCount;
             pMB->uMaxNameLen = REDCONF_NAME_MAX;
             pMB->uDirectPointers = REDCONF_DIRECT_POINTERS;
@@ -249,6 +280,27 @@ REDSTATUS RedVolFormat(
           #if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_LINK == 1)
             pMB->bFlags |= MBFLAG_INODE_NLINK;
           #endif
+          #if (REDCONF_API_POSIX == 1) && (REDCONF_POSIX_OWNER_PERM == 1)
+            pMB->bFlags |= MBFLAG_INODE_UIDGID;
+          #endif
+          #if (REDCONF_API_POSIX == 1) && (REDCONF_DELETE_OPEN == 1)
+            pMB->bFlags |= MBFLAG_DELETE_OPEN;
+          #endif
+
+          #if (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_SYMLINK == 1)
+            pMB->uFeaturesReadOnly |= MBFEATURE_SYMLINK;
+          #endif
+
+            if(pMB->ulVersion >= RED_DISK_LAYOUT_POSIXIER)
+            {
+                pMB->bSectorSizeP2 = 1U;
+                while((1U << pMB->bSectorSizeP2) < gaRedBdevInfo[gbRedVolNum].ulSectorSize)
+                {
+                    pMB->bSectorSizeP2++;
+                }
+
+                REDASSERT((1U << pMB->bSectorSizeP2) == gaRedBdevInfo[gbRedVolNum].ulSectorSize);
+            }
 
             ret = RedBufferFlushRange(BLOCK_NUM_MASTER, 1U);
 
@@ -285,6 +337,39 @@ REDSTATUS RedVolFormat(
     return ret;
 }
 
+
+/** @brief Compute a reasonable number of inodes for the current volume.
+
+    @return The computed inode count.
+*/
+static uint32_t ComputeInodeCount(void)
+{
+    uint32_t ulInodeBlocksMax;
+    uint32_t ulInodeBlocks;
+    uint32_t ulInodeCountMin;
+    uint32_t ulInodeCount;
+
+    /*  Compute the maximum number of blocks that an inode can consume.
+    */
+    ulInodeBlocksMax = (uint32_t)REDMIN(UINT32_MAX, UINT64_SUFFIX(2) + INODE_DATA_BLOCKS + REDCONF_INDIRECT_POINTERS + (DINDIR_POINTERS * INDIR_ENTRIES));
+
+    /*  Compute an absolute minimum, such that there are enough inodes to
+        conceivably consume all allocable blocks.
+    */
+    ulInodeCountMin = gpRedVolume->ulBlockCount / ulInodeBlocksMax;
+
+    if((gpRedVolume->ulBlockCount % ulInodeBlocksMax) != 0U)
+    {
+        ulInodeCountMin++;
+    }
+
+    /*  Allow 16 allocable blocks for each inode, plus the two inode blocks.
+    */
+    ulInodeBlocks = 16U + 2U;
+    ulInodeCount = gpRedVolume->ulBlockCount / ulInodeBlocks;
+
+    return REDMAX(ulInodeCountMin, ulInodeCount);
+}
 
 #endif /* FORMAT_SUPPORTED */
 

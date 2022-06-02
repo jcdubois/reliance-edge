@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 #ifndef VOLUMESETTINGS_H
 #define VOLUMESETTINGS_H
@@ -83,20 +84,23 @@ public:
         bool NeedsInternalImap();
         bool IsAutoSectorSize();
         bool IsAutoSectorCount();
+        bool IsAutoInodeCount();
         void SetAutoSectorSize(bool);
         void SetAutoSectorCount(bool);
+        void SetAutoInodeCount(bool);
 
     private:
         StrSetting stName;
+        IntSetting stSectorSize;
         IntSetting stSectorCount;
         IntSetting stSectorOff;
-        IntSetting stInodeCount;
-        IntSetting stSectorSize;
         StrSetting stAtomicWrite;
         StrSetting stDiscardSupport;
+        IntSetting stInodeCount;
         IntSetting stBlockIoRetries;
-        bool fAutoSectorSize = false;
-        bool fAutoSectorCount = false;
+        bool fAutoSectorSize = true;
+        bool fAutoSectorCount = true;
+        bool fAutoInodeCount = true;
     };
 
     ///
@@ -113,6 +117,7 @@ public:
                    QSpinBox *volOffBox,
                    QLabel *volOffLabel,
                    QSpinBox *inodeCountBox,
+                   QCheckBox *inodeCountAuto,
                    QComboBox *atomicWriteBox,
                    QComboBox *discardSupportBox,
                    QCheckBox *enableRetriesCheck,
@@ -271,6 +276,7 @@ private:
     QSpinBox *sbVolSize;
     QSpinBox *sbVolOff;
     QSpinBox *sbInodeCount;
+    QCheckBox *cbInodeCountAuto;
     QCheckBox *cbVolSizeAuto;
     QCheckBox *cbSectorSizeAuto;
     QLabel *labelVolSizeBytes;
@@ -303,6 +309,7 @@ private slots:
     void sbVolSize_valueChanged(const QString &value);
     void sbVolOff_valueChanged(const QString &value);
     void sbInodeCount_valueChanged(const QString &value);
+    void cbInodeCountAuto_stateChanged(int state);
     void cmbAtomicWrite_currentIndexChanged(int index);
     void cmbDiscardSupport_currentIndexChanged(int index);
     void cbEnableRetries_stateChanged(int state);

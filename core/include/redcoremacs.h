@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
 */
@@ -58,6 +59,17 @@
 #define INODE_DATA_BLOCKS   (REDCONF_DIRECT_POINTERS + INODE_INDIR_BLOCKS + INODE_DINDIR_BLOCKS)
 #define INODE_SIZE_MAX      (UINT64_SUFFIX(1) * REDCONF_BLOCK_SIZE * INODE_DATA_BLOCKS)
 
+/*  Maximum depth of allocable blocks below the inode, including (if applicable)
+    double-indirect node, indirect node, and data block.
+*/
+#if DINDIR_POINTERS > 0U
+  #define INODE_MAX_DEPTH   3U
+#elif REDCONF_DIRECT_POINTERS < INODE_ENTRIES
+  #define INODE_MAX_DEPTH   2U
+#else
+  #define INODE_MAX_DEPTH   1U
+#endif
+
 
 /*  First inode number that can be allocated.
 */
@@ -69,7 +81,7 @@
 
 /** @brief Determine if an inode number is valid.
 */
-#define INODE_IS_VALID(INODENUM)    (((INODENUM) >= INODE_FIRST_VALID) && ((INODENUM) < (INODE_FIRST_VALID + gpRedVolConf->ulInodeCount)))
+#define INODE_IS_VALID(INODENUM)    (((INODENUM) >= INODE_FIRST_VALID) && ((INODENUM) < (INODE_FIRST_VALID + gpRedCoreVol->ulInodeCount)))
 
 
 /*  The number of blocks reserved to allow a truncate or delete operation to

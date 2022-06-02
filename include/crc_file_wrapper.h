@@ -13,6 +13,8 @@ extern "C" {
 
 #define FILE_CRC_ATTRIBUTE 0
 
+int32_t crc_file_wrapper_stat(const char *pszPath, REDSTAT *pStat);
+
 int32_t crc_file_wrapper_open(const char *pszPath, uint32_t ulOpenMode);
 
 int32_t crc_file_wrapper_close(int32_t iFildes);

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @brief
     @file FreeRTOS block device implementation; see osbdev.c for details.
@@ -32,9 +33,9 @@
 #ifdef USE_STM324xG_EVAL
   #include <stm324xg_eval.h>
   #include <stm324xg_eval_sd.h>
-#elif defined(USE_STM32746G_DISCO)
-  #include <stm32746g_discovery.h>
-  #include <stm32746g_discovery_sd.h>
+#elif defined(USE_STM32F7508_DISCO)
+  #include <stm32f7508_discovery.h>
+  #include <stm32f7508_discovery_sd.h>
 #else
   /*  If you are using a compatible STM32 device other than the two listed above
       and you have SD card driver headers, you can try adding them to the above
@@ -159,7 +160,7 @@ static REDSTATUS DiskGetGeometry(
     uint8_t                 bVolNum,
     BDEVINFO               *pInfo)
 {
-    HAL_SD_CardInfoTypedef  sdCardInfo = {{0}};
+    HAL_SD_CardInfoTypeDef  sdCardInfo = {{0}};
 
     BSP_SD_GetCardInfo(&sdCardInfo);
 
@@ -172,7 +173,7 @@ static REDSTATUS DiskGetGeometry(
         512-byte sectors.
     */
     pInfo->ulSectorSize = 512U;
-    pInfo->ullSectorCount = sdCardInfo.CardCapacity >> 9U;
+    pInfo->ullSectorCount = sdCardInfo.BlockNbr;
 
     return 0;
 }
@@ -203,7 +204,7 @@ static REDSTATUS DiskRead(
 
     if(IS_ALIGNED_PTR(pBuffer, sizeof(uint32_t)))
     {
-        bSdError = BSP_SD_ReadBlocks_DMA(pBuffer, ullSectorStart * ulSectorSize, ulSectorSize, ulSectorCount);
+        bSdError = BSP_SD_ReadBlocks_DMA(pBuffer, ullSectorStart, ulSectorCount);
 
         if(bSdError != MSD_OK)
         {
@@ -222,7 +223,7 @@ static REDSTATUS DiskRead(
 
         for(ulSectorIdx = 0U; ulSectorIdx < ulSectorCount; ulSectorIdx++)
         {
-            bSdError = BSP_SD_ReadBlocks_DMA(gaulAlignedBuffer, (ullSectorStart + ulSectorIdx) * ulSectorSize, ulSectorSize, 1U);
+            bSdError = BSP_SD_ReadBlocks_DMA(gaulAlignedBuffer, (ullSectorStart + ulSectorIdx), 1U);
 
             if(bSdError != MSD_OK)
             {
@@ -279,8 +280,7 @@ static REDSTATUS DiskWrite(
 
     if(IS_ALIGNED_PTR(pBuffer, sizeof(uint32_t)))
     {
-        bSdError = BSP_SD_WriteBlocks_DMA(CAST_AWAY_CONST(void, pBuffer), ullSectorStart * ulSectorSize,
-                                          ulSectorSize, ulSectorCount);
+        bSdError = BSP_SD_WriteBlocks_DMA(CAST_AWAY_CONST(void, pBuffer), ullSectorStart, ulSectorCount);
 
         if(bSdError != MSD_OK)
         {
@@ -303,7 +303,7 @@ static REDSTATUS DiskWrite(
 
             RedMemCpy(gaulAlignedBuffer, &pbBuffer[ulSectorIdx * ulSectorSize], ulSectorSize);
 
-            bSdError = BSP_SD_WriteBlocks_DMA(gaulAlignedBuffer, (ullSectorStart + ulSectorIdx) * ulSectorSize, ulSectorSize, 1U);
+            bSdError = BSP_SD_WriteBlocks_DMA(gaulAlignedBuffer, (ullSectorStart + ulSectorIdx), 1U);
 
             if(bSdError != MSD_OK)
             {
@@ -362,11 +362,11 @@ static REDSTATUS CheckStatus(void)
 {
     REDSTATUS                   redStat = 0;
     uint32_t                    ulTimeout = SD_STATUS_TIMEOUT;
-    HAL_SD_TransferStateTypedef transferState;
+    uint8_t                     transferState;
 
     do
     {
-        transferState = BSP_SD_GetStatus();
+        transferState = BSP_SD_GetCardState();
         ulTimeout--;
     } while((transferState == SD_TRANSFER_BUSY) && (ulTimeout > 0U));
 

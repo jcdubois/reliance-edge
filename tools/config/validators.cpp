@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 ///
 /// \file validators.h
@@ -420,6 +421,13 @@ Validity validateVolName(QString value, QString &msg)
 ///
 Validity validateVolSectorSize(unsigned long value, QString &msg)
 {
+    VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
+
+    if(currVolume->IsAutoSectorSize())
+    {
+        return Valid;
+    }
+
     Q_ASSERT(allSettings.cmisBlockSize != NULL);
     if(!isPowerOfTwo(value)
             || value < 128
@@ -448,7 +456,13 @@ Validity validateVolSectorSize(unsigned long value, QString &msg)
 Validity validateVolSectorCount(unsigned long value, QString &msg)
 {
     VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
-	bool isAutoSize = currVolume->IsAutoSectorSize();
+
+    if(currVolume->IsAutoSectorCount())
+    {
+        return Valid;
+    }
+
+    bool isAutoSize = currVolume->IsAutoSectorSize();
     unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
     unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
 
@@ -499,7 +513,7 @@ Validity validateVolSectorOff(unsigned long value, QString &msg)
 {
     (void)value;
     VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
-	bool isAutoSize = currVolume->IsAutoSectorSize();
+    bool isAutoSize = currVolume->IsAutoSectorSize();
     unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
     unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
 
@@ -509,10 +523,10 @@ Validity validateVolSectorOff(unsigned long value, QString &msg)
         msg = "Invalid block or sector size; cannot validate volume offset.";
         return Warning;
     }
-	else
-	{
-		return Valid;
-	}
+    else
+    {
+        return Valid;
+    }
 }
 
 ///
@@ -524,15 +538,21 @@ Validity validateVolSectorOff(unsigned long value, QString &msg)
 ///
 Validity validateVolInodeCount(unsigned long value, QString &msg)
 {
+    VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
+
+    if(currVolume->IsAutoInodeCount())
+    {
+        return Valid;
+    }
+
     if(value < 1)
     {
         msg = "Inode count must be 1 or above.";
         return Invalid;
     }
 
-    VolumeSettings::Volume *currVolume = volumeSettings->GetVolumes()->at(volumeSettings->GetCurrentIndex());
-	bool isAutoSize = currVolume->IsAutoSectorSize();
-	bool isAutoCount = currVolume->IsAutoSectorCount();
+    bool isAutoSize = currVolume->IsAutoSectorSize();
+    bool isAutoCount = currVolume->IsAutoSectorCount();
 
     bool imapExternal = currVolume->NeedsExternalImap();
     unsigned long sectorSize = currVolume->GetStSectorSize()->GetValue();
@@ -889,9 +909,9 @@ Validity validateBufferAlignment(unsigned long value, QString &msg)
 
     if(value > blockSize)
     {
-		msg = QString("Alignment should not exceed block size. Current maximum based on block size: ")
-				+ QString::number(blockSize)
-				+ QString(".");
+        msg = QString("Alignment should not exceed block size. Current maximum based on block size: ")
+                + QString::number(blockSize)
+                + QString(".");
         return Invalid;
     }
 
@@ -901,13 +921,13 @@ Validity validateBufferAlignment(unsigned long value, QString &msg)
         return Invalid;
     }
 
-	if(value & (value - 1))
-	{
+    if(value & (value - 1))
+    {
         msg = QString("Alignment must be a power of 2.");
         return Invalid;
-	}
+    }
 
-	return Valid;
+    return Valid;
 }
 
 ///
@@ -917,48 +937,48 @@ Validity validateBufferAlignment(unsigned long value, QString &msg)
 ///
 Validity validateBufferWriteGather(unsigned long value, QString &msg)
 {
-	unsigned long maximum4GB = 4194304UL;
+    unsigned long maximum4GB = 4194304UL;
     unsigned long blockSize = allSettings.cmisBlockSize->GetValue();
-	unsigned long bufferCount = allSettings.sbsAllocatedBuffers->GetValue();
-	unsigned long long maximumBufferLimit = ((unsigned long long )blockSize * bufferCount) / 1024;
+    unsigned long bufferCount = allSettings.sbsAllocatedBuffers->GetValue();
+    unsigned long long maximumBufferLimit = ((unsigned long long )blockSize * bufferCount) / 1024;
 
     if(value > maximum4GB)
     {
-		msg = QString("Write-gather size exceeds the 4GB maximum of ")
-				+ QString::number(maximum4GB)
-				+ QString(".");
+        msg = QString("Write-gather size exceeds the 4GB maximum of ")
+                + QString::number(maximum4GB)
+                + QString(".");
         return Invalid;
     }
 
     if(value > maximumBufferLimit)
     {
-		msg = QString("Write-gather size exceeds the total buffers maximum of ")
-				+ QString::number(maximumBufferLimit)
-				+ QString(".");
+        msg = QString("Write-gather size exceeds the total buffers maximum of ")
+                + QString::number(maximumBufferLimit)
+                + QString(".");
         return Invalid;
     }
 
-	if(value)
-	{
-		unsigned long long bigValue = (unsigned long long )value * 1024;
-		unsigned long minimumBlockSizeLimit = blockSize * 2;
+    if(value)
+    {
+        unsigned long long bigValue = (unsigned long long )value * 1024;
+        unsigned long minimumBlockSizeLimit = blockSize * 2;
 
-	    if(bigValue < minimumBlockSizeLimit)
-	    {
-			msg = QString("Write-gather size doesn't meet the block size minimum of ")
-					+ QString::number(minimumBlockSizeLimit)
-					+ QString(".");
-	        return Invalid;
-	    }
+        if(bigValue < minimumBlockSizeLimit)
+        {
+            msg = QString("Write-gather size doesn't meet the block size minimum of ")
+                    + QString::number(minimumBlockSizeLimit)
+                    + QString(".");
+            return Invalid;
+        }
 
-	    if(bigValue % blockSize != 0)
-	    {
-			msg = QString("Write-gather isn't a multiple of block size.");
-	        return Invalid;
-	    }
-	}
+        if(bigValue % blockSize != 0)
+        {
+            msg = QString("Write-gather isn't a multiple of block size.");
+            return Invalid;
+        }
+    }
 
-	return Valid;
+    return Valid;
 }
 
 ///
@@ -1025,11 +1045,14 @@ unsigned long getInodeEntries()
     Q_ASSERT(allSettings.rbtnsUsePosix != NULL);
     Q_ASSERT(allSettings.cmisBlockSize != NULL);
 
+    bool posix = allSettings.rbtnsUsePosix->GetValue();
     unsigned long inodeHeaderSize = 16 + 8
             + (allSettings.cbsInodeBlockCount->GetValue() ? 4 : 0)
             + (allSettings.cbsInodeTimestamps->GetValue() ? 12 : 0)
+            + ((posix && allSettings.cbsPosixOwnerPerm->GetValue()) ? 8 : 0)
             + 4
-            + (allSettings.rbtnsUsePosix->GetValue() ? 4 : 0);
+            + (posix ? 4 : 0)
+            + ((posix && allSettings.cbsDeleteOpen->GetValue()) ? 4 : 0);
 
     return (allSettings.cmisBlockSize->GetValue() - inodeHeaderSize) / 4;
 }
@@ -1041,7 +1064,7 @@ qulonglong getVolSizeMaxBytes()
     qlonglong blockSize = allSettings.cmisBlockSize->GetValue();
     bool posix = allSettings.rbtnsUsePosix->GetValue();
 
-    qlonglong mrHeader = 28 + (posix ? 4 : 0);
+    qlonglong mrHeader = 28 + (posix ? 4 : 0) + ((posix && allSettings.cbsDeleteOpen->GetValue()) ? 12 : 0);
     qlonglong mrImapBits = (static_cast<qlonglong>(blockSize) - mrHeader) * 8;
     qlonglong imapBits = (static_cast<qlonglong>(blockSize) - 16) * 8;
 

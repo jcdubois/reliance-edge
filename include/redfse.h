@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Interface for the Reliance Edge FSE API.
@@ -69,6 +70,20 @@ extern "C" {
 #define RED_FILENUM_FIRST_VALID (2U)
 
 
+/** @brief Status information on a file system volume.
+*/
+typedef struct
+{
+    uint32_t    ulBlockSize;    /**< File system block size. */
+    uint32_t    ulBlockCount;   /**< Total number of blocks on file system in units of ulBlockSize. */
+    uint32_t    ulBlocksFree;   /**< Total number of free blocks. */
+    uint32_t    ulFileCount;    /**< Total number of file numbers. */
+    bool        fReadOnly;      /**< Whether the file system volume is read-only. */
+    uint64_t    ullMaxFileSize; /**< Maximum file size. */
+    uint32_t    ulLayoutVer;    /**< On-disk layout verison.  Values defined in redver.h. */
+} REDFSESTATFS;
+
+
 REDSTATUS RedFseInit(void);
 REDSTATUS RedFseUninit(void);
 REDSTATUS RedFseMount(uint8_t bVolNum);
@@ -76,6 +91,7 @@ REDSTATUS RedFseUnmount(uint8_t bVolNum);
 #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_FSE_FORMAT == 1)
 REDSTATUS RedFseFormat(uint8_t bVolNum);
 #endif
+REDSTATUS RedFseStatfs(uint8_t bVolNum, REDFSESTATFS *pStatvfs);
 int32_t RedFseRead(uint8_t bVolNum, uint32_t ulFileNum, uint64_t ullFileOffset, uint32_t ulLength, void *pBuffer);
 #if REDCONF_READ_ONLY == 0
 int32_t RedFseWrite(uint8_t bVolNum, uint32_t ulFileNum, uint64_t ullFileOffset, uint32_t ulLength, const void *pBuffer);

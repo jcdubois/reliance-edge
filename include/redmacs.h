@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
 */
@@ -69,9 +70,6 @@
 #define false (0)
 #endif
 
-#define SECTOR_SIZE_AUTO    (0U)
-#define SECTOR_COUNT_AUTO   (0U)
-
 #define SECTOR_SIZE_MIN (128U)
 
 #if   REDCONF_BLOCK_SIZE == 128U
@@ -97,6 +95,10 @@
 #else
 #error "REDCONF_BLOCK_SIZE must be a power of two value between 128 and 65536"
 #endif
+
+/** @brief Assert a condition at compile time.
+*/
+#define REDSTATICASSERT(EXP) ((void)sizeof(char[1 - (2 * !(EXP))]))
 
 /** @brief Cast a const-qualified pointer to a pointer which is *not*
            const-qualified.

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
 */
@@ -41,7 +42,7 @@ typedef struct
     */
     bool        fImapInline;
 
-#if REDCONF_IMAP_EXTERNAL == 1
+  #if REDCONF_IMAP_EXTERNAL == 1
     /** First block number of the on-disk imap.  Valid only when fImapInline
         is false.
     */
@@ -50,11 +51,18 @@ typedef struct
     /** The number of double-allocated imap nodes that make up the imap.
     */
     uint32_t    ulImapNodeCount;
-#endif
+  #endif
 
     /** Block number where the inode table starts.
     */
     uint32_t    ulInodeTableStartBN;
+
+    /** This is the maximum number of inodes (files and directories).  This
+        number includes the root directory inode (inode 2; created during
+        format), but does not include inodes 0 or 1, which do not exist on
+        disk.  The number of inodes cannot be less than 1.
+    */
+    uint32_t    ulInodeCount;
 
     /** First block number that can be allocated.
     */
@@ -81,6 +89,21 @@ typedef struct
         space.
     */
     bool        fUseReservedBlocks;
+  #endif
+
+  #if (REDCONF_READ_ONLY == 0) && (REDCONF_API_POSIX == 1) && (REDCONF_API_POSIX_FRESERVE == 1)
+    /** The number of inodes which have reserved space.
+    */
+    uint32_t    ulReservedInodes;
+
+    /** The number of blocks reserved, including file data, indirects and
+        double-indirects.
+    */
+    uint32_t    ulReservedInodeBlocks;
+
+    /** Set to true only when writing to reserved inode space.
+    */
+    bool        fUseReservedInodeBlocks;
   #endif
 } COREVOLUME;
 

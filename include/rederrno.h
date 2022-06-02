@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Error values for Reliance Edge APIs
@@ -51,6 +52,9 @@ typedef int32_t REDSTATUS;
 
 /** Out of memory */
 #define RED_ENOMEM          12
+
+/** Permission denied. */
+#define RED_EACCES          13
 
 /** Device or resource busy. */
 #define RED_EBUSY           16
@@ -100,8 +104,14 @@ typedef int32_t REDSTATUS;
 /** Directory not empty. */
 #define RED_ENOTEMPTY       39
 
+/** Too many symbolic links encountered. */
+#define RED_ELOOP           40
+
 /** No data available. */
 #define RED_ENODATA         61
+
+/** Link has been severed. */
+#define RED_ENOLINK         67
 
 /** Too many users. */
 #define RED_EUSERS          87
@@ -114,4 +124,3 @@ typedef int32_t REDSTATUS;
 
 
 #endif
-

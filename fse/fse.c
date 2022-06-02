@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Implementation of the Reliance Edge FSE API.
@@ -268,6 +269,57 @@ REDSTATUS RedFseFormat(
     return ret;
 }
 #endif
+
+
+/** @brief Retrieve information about a file system volume.
+
+    @param bVolNum  The volume number of the volume to query.
+    @param pStatvfs The buffer to populate with volume information.
+
+    @return A negated ::REDSTATUS code indicating the operation result.
+
+    @retval 0           Operation was successful.
+    @retval -RED_EINVAL @p bVolNum is an invalid volume number or not mounted;
+                        or @p pStatvfs is `NULL`; or the driver is
+                        uninitialized.
+*/
+REDSTATUS RedFseStatfs(
+    uint8_t         bVolNum,
+    REDFSESTATFS   *pStatvfs)
+{
+    REDSTATUS       ret;
+
+    if(pStatvfs == NULL)
+    {
+        ret = -RED_EINVAL;
+    }
+    else
+    {
+        ret = FseEnter(bVolNum);
+    }
+
+    if(ret == 0)
+    {
+        REDSTATFS redStatfs;
+
+        ret = RedCoreVolStat(&redStatfs);
+
+        if(ret == 0)
+        {
+            pStatvfs->ulBlockSize = redStatfs.f_bsize;
+            pStatvfs->ulBlockCount = redStatfs.f_blocks;
+            pStatvfs->ulBlocksFree = redStatfs.f_bfree;
+            pStatvfs->ulFileCount = redStatfs.f_files;
+            pStatvfs->fReadOnly = (redStatfs.f_flag & RED_ST_RDONLY) != 0U;
+            pStatvfs->ullMaxFileSize = redStatfs.f_maxfsize;
+            pStatvfs->ulLayoutVer = redStatfs.f_diskver;
+        }
+
+        FseLeave();
+    }
+
+    return ret;
+}
 
 
 /** @brief Read from a file.

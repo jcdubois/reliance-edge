@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Implements a Win32 command-line front-end for the Reliance Edge file
@@ -63,6 +64,7 @@ int main(
     const REDOPTION aLongopts[] =
     {
         { "version", red_required_argument, NULL, 'V' },
+        { "inodes", red_required_argument, NULL, 'N' },
         { "dev", red_required_argument, NULL, 'D' },
         { "help", red_no_argument, NULL, 'H' },
         { NULL }
@@ -77,7 +79,7 @@ int main(
         goto Help;
     }
 
-    while((c = RedGetoptLong(argc, argv, "V:D:H", aLongopts, NULL)) != -1)
+    while((c = RedGetoptLong(argc, argv, "V:N:D:H", aLongopts, NULL)) != -1)
     {
         switch(c)
         {
@@ -100,6 +102,37 @@ int main(
                 }
 
                 fo.ulVersion = (uint32_t)ulVer;
+                break;
+            }
+            case 'N': /* --inodes */
+            {
+                unsigned long ulInodes;
+
+                if(strcmp(red_optarg, "auto") == 0)
+                {
+                    ulInodes = RED_FORMAT_INODE_COUNT_AUTO;
+                }
+                else
+                {
+                    char *pszEnd;
+
+                    errno = 0;
+                    ulInodes = strtoul(red_optarg, &pszEnd, 10);
+                    if((ulInodes == 0U) || (ulInodes == ULONG_MAX) || (errno != 0) || (*pszEnd != '\0'))
+                    {
+                        fprintf(stderr, "Invalid inode count: %s\n", red_optarg);
+                        goto BadOpt;
+                    }
+                  #if ULONG_MAX > UINT32_MAX
+                    if(ulInodes > UINT32_MAX)
+                    {
+                        fprintf(stderr, "Invalid inode count: %lu\n", ulInodes);
+                        goto BadOpt;
+                    }
+                  #endif
+                }
+
+                fo.ulInodeCount = (uint32_t)ulInodes;
                 break;
             }
             case 'D': /* --dev */
@@ -210,7 +243,7 @@ static void Usage(
     int         iExitStatus = fError ? 1 : 0;
     FILE       *pOut = fError ? stderr : stdout;
     static const char szUsage[] =
-"usage: %s VolumeID --dev=devname [--version=layout_ver] [--help]\n"
+"usage: %s VolumeID --dev=devname [--version=layout_ver] [--inodes=count] [--help]\n"
 "Format a Reliance Edge file system volume.\n"
 "\n"
 "Where:\n"
@@ -229,11 +262,16 @@ static void Usage(
 "      a partition instead of the entire physical media).\n"
 "  --version=layout_ver, -V layout_ver\n"
 "      Specify the on-disk layout version to use.  If unspecified, the default\n"
-"      is %u.  Supported versions are %u and %u.\n"
+"      is %u.  With the current file system configuration, supported version(s)\n"
+"      are: %s.\n"
+"  --inodes=count, -N count\n"
+"      Specify the inode count to use.  If unspecified, the inode count in the\n"
+"      volume configuration is used.  A value of \"auto\" may be specified to\n"
+"      automatically compute an appropriate inode count for the volume size.\n"
 "  --help, -H\n"
 "      Prints this usage text and exits.\n\n";
 
-    fprintf(pOut, szUsage, pszProgramName, RED_DISK_LAYOUT_VERSION, RED_DISK_LAYOUT_ORIGINAL, RED_DISK_LAYOUT_DIRCRC);
+    fprintf(pOut, szUsage, pszProgramName, RED_DISK_LAYOUT_VERSION, RED_DISK_LAYOUT_SUPPORTED_STR);
     exit(iExitStatus);
 }
 

@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Implements block device I/O.
@@ -58,13 +59,14 @@ typedef enum
 
 typedef struct
 {
-    bool            fOpen;      /* The block device is open. */
-    BDEVOPENMODE    mode;       /* Access mode. */
-    BDEVTYPE        type;       /* Disk type: ram disk or file disk. */
-    uint8_t        *pbRamDisk;  /* Buffer for RAM disks. */
-    const char     *pszSpec;    /* Path for file and raw disks. */
-    int             fd;         /* File descriptor for file disks. */
-    bool            fIsBDev;    /* Whether file disk is a block device. */
+    bool            fOpen;          /* The block device is open. */
+    BDEVOPENMODE    mode;           /* Access mode. */
+    BDEVTYPE        type;           /* Disk type: ram disk or file disk. */
+    uint8_t        *pbRamDisk;      /* Buffer for RAM disks. */
+    const char     *pszSpec;        /* Path for file and raw disks. */
+    int             fd;             /* File descriptor for file disks. */
+    bool            fIsBDev;        /* Whether file disk is a block device. */
+    bool            fFsyncError;    /* Whether fsync() failed with an error. */
 } LINUXBDEV;
 
 
@@ -91,26 +93,31 @@ static LINUXBDEV gaDisk[REDCONF_VOLUME_COUNT];
 
 /** @brief Configure a block device.
 
-    @note   This is a non-standard block device API!  The standard block device
-            APIs are designed for implementations running on targets with block
-            devices that are known in advance and can be statically defined by
-            the implementation.  However, this implementation is intended for
-            host systems, and it needs to support writing to raw disks (like
-            "H:" etc.) and file disks which are supplied on the command line.
+    In some operating environments, block devices need to be configured with
+    run-time context information that is only available at higher layers.
+    For example, a block device might need to be associated with a block
+    device handle or a device string.  This API allows that OS-specific
+    context information to be passed down from the higher layer (e.g., a
+    VFS implementation) to the block device OS service, which can save it
+    for later use.
 
-    @param bVolNum      The volume number of the volume to configure.
-    @param pszBDevSpec  Drive or file to associate with the volume.
+    Not all OS ports will call RedOsBDevConfig().  If called, it will be called
+    while the block device is closed, prior to calling RedOsBDevOpen().
+
+    @param bVolNum  The volume number of the volume to configure.
+    @param context  OS-specific block device context information.
 
     @return A negated ::REDSTATUS code indicating the operation result.
 
     @retval 0           Operation was successful.
-    @retval -RED_EINVAL @p bVolNum is not a valid volume number; or
-                        @p pszBDevSpec is `NULL` or an empty string.
+    @retval -RED_EINVAL @p bVolNum is not a valid volume number; or @p context
+                        is `NULL` or an empty string.
 */
 REDSTATUS RedOsBDevConfig(
     uint8_t     bVolNum,
-    const char *pszBDevSpec)
+    REDBDEVCTX  context)
 {
+    const char *pszBDevSpec = context;
     REDSTATUS   ret;
 
     if((bVolNum >= REDCONF_VOLUME_COUNT) || gaDisk[bVolNum].fOpen || (pszBDevSpec == NULL) || (pszBDevSpec[0U] == '\0'))
@@ -787,6 +794,7 @@ static REDSTATUS FileDiskOpen(
         }
 
         pDisk->fIsBDev = S_ISBLK(stat.st_mode);
+        pDisk->fFsyncError = false;
     }
 
     /*  If the file disk is a regular file, make sure that it's big enough that
@@ -1092,9 +1100,24 @@ static REDSTATUS FileDiskFlush(
     */
     if(pDisk->fIsBDev)
     {
-        if(fsync(pDisk->fd) != 0)
+        if(pDisk->fFsyncError)
+        {
+            /*  Don't fsync() again after an error, just keep returning EIO.
+                On Linux, fsync() is only guaranteed to return an error once;
+                subsequent calls may succeed even though the data hasn't been
+                synced.
+            */
+            ret = -RED_EIO;
+        }
+        else if(fsync(pDisk->fd) != 0)
         {
             ret = -RED_EIO;
+            pDisk->fFsyncError = true;
+        }
+        else
+        {
+            /*  fsync() successful.
+            */
         }
     }
 

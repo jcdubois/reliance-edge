@@ -1,6 +1,6 @@
 /*             ----> DO NOT REMOVE THE FOLLOWING NOTICE <----
 
-                  Copyright (c) 2014-2021 Tuxera US Inc.
+                  Copyright (c) 2014-2022 Tuxera US Inc.
                       All Rights Reserved Worldwide.
 
     This program is free software; you can redistribute it and/or modify
@@ -17,10 +17,11 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 /*  Businesses and individuals that for commercial or other reasons cannot
-    comply with the terms of the GPLv2 license must obtain a commercial license
-    before incorporating Reliance Edge into proprietary software for
-    distribution in any form.  Visit http://www.datalight.com/reliance-edge for
-    more information.
+    comply with the terms of the GPLv2 license must obtain a commercial
+    license before incorporating Reliance Edge into proprietary software
+    for distribution in any form.
+
+    Visit https://www.tuxera.com/products/reliance-edge/ for more information.
 */
 /** @file
     @brief Defines basic types used by Reliance Edge.
@@ -82,9 +83,10 @@
 #ifndef REDTYPES_H
 #define REDTYPES_H
 
-/*  Necessary for the bool and uintptr_t types
+/*  Defines bool type.
 */
-#include <common.h>
+#include <stdbool.h>
+
 
 typedef unsigned char uint8_t;
 typedef signed char int8_t;
@@ -94,6 +96,7 @@ typedef unsigned int uint32_t;
 typedef int int32_t;
 typedef unsigned long long uint64_t;
 typedef long long int64_t;
+typedef unsigned long uintptr_t;
 
 
 #endif
